@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin – Crew Hours</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 16px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+    th { background: #f6f6f6; }
+    td.name, th.name { text-align: left; }
+    .wrap { max-width: 900px; margin: 0 auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>Crew Weekly Hours</h2>
+    <p>Hourly rate: ${{ '%.2f' % hourly_rate }} • 
+       <a href="/admin/export.csv?key={{ request.args.get('key') }}">Export CSV</a></p>
+
+    <table>
+      <tr>
+        <th class="name">Crew</th>
+        {% for wk in weeks %}
+          <th>{{ wk }}</th>
+        {% endfor %}
+        <th>Total</th>
+        <th>Labor $</th>
+      </tr>
+      {% for name, wkmap in report.items() %}
+        <tr>
+          <td class="name">{{ name }}</td>
+          {% set total = 0 %}
+          {% for wk in weeks %}
+            {% set hrs = wkmap.get(wk, 0) %}
+            {% set total = total + hrs %}
+            <td>{{ '%.2f' % hrs }}</td>
+          {% endfor %}
+          <td><b>{{ '%.2f' % total }}</b></td>
+          <td><b>${{ '%.2f' % (total * hourly_rate) }}</b></td>
+        </tr>
+      {% endfor %}
+    </table>
+  </div>
+</body>
+</html>

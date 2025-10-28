@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Crew Clock</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --in-bg: #eaf7ec;
+      --in-fg: #0a7a20;
+      --out-bg: #fdeaea;
+      --out-fg: #9a0511;
+      --muted: #666;
+      --table-border: #ddd;
+      --today-bg: #edf3ff;
+    }
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 30px auto; padding: 10px; }
+    h1 { margin-bottom: 5px; }
+    .muted { color: var(--muted); }
+    form { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
+    input, select, button { padding: 8px; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid var(--table-border); padding: 8px; text-align: left; }
+    th { background: #f7f7f7; }
+    tr.in  { background: var(--in-bg);  }
+    tr.in  td:nth-child(3), tr.in td:nth-child(5)  { color: var(--in-fg);  font-weight: 600; }
+    tr.out { background: var(--out-bg); }
+    tr.out td:nth-child(3), tr.out td:nth-child(5) { color: var(--out-fg); font-weight: 600; }
+    .today { background: var(--today-bg); }
+    .hrs { white-space: nowrap; text-align: right; }
+  </style>
+</head>
+<body>
+  <h1>Crew Clock</h1>
+  <p class="muted">Clock your crew in/out and see recent punches. Hours column shows each person’s total for that date.</p>
+
+  <form method="post" action="/clock">
+    <input name="crew" placeholder="Crew member (e.g., Jessie)" required />
+    <select name="action" required>
+      <option value="IN">Clock IN</option>
+      <option value="OUT">Clock OUT</option>
+    </select>
+    <button type="submit">Submit</button>
+  </form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Crew</th><th>Action</th><th>Timestamp</th><th>Hours Today</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for id, crew, action, ts in punches %}
+        {% set row_date = ts.split(' ')[0] %}
+        {% set today_total = daily_hours_str.get(crew, {}).get(row_date, 0) %}
+        {% set cls = (action == 'IN') and 'in' or 'out' %}
+        <tr class="{{ cls }}{% if row_date == (ts.split(' ')[0]) %}{% endif %}">
+          <td>{{ id }}</td>
+          <td>{{ crew }}</td>
+          <td>{{ action }}</td>
+          <td>{{ ts }}</td>
+          <td class="hrs">{{ ('%.2f' % today_total) if today_total else '' }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>
