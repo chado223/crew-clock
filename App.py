@@ -41,7 +41,7 @@ def init_db():
 
 init_db()
 
-# ---- Helpers ----
+# ---- Local Helpers ----
 def get_recent_entries(limit=50):
     """Return recent punches (id, crew, action, timestamp)."""
     with sqlite3.connect(DB_PATH) as conn:
@@ -108,7 +108,9 @@ def log_to_google_sheets(date_str, ts_str, crew, action):
         traceback.print_exc()
         return False, str(e)
 
-# ---- Routes ----
+# ------------------------------------------------------------------
+# ROUTES
+# ------------------------------------------------------------------
 @app.route("/", methods=["GET"])
 def clock_page():
     rows = get_recent_entries()
@@ -135,7 +137,9 @@ def clock_submit():
 
     return redirect(url_for("clock_page"))
 
-# ---- Simple health check for Render ----
+# ------------------------------------------------------------------
+# HEALTH ENDPOINTS (for Render)
+# ------------------------------------------------------------------
 @app.route("/health")
 def health():
     try:
@@ -143,6 +147,15 @@ def health():
         return {"ok": True}, 200
     except Exception as e:
         return {"ok": False, "error": str(e)}, 500
+
+@app.route("/healthz")
+def healthz():
+    """Secondary health endpoint for Render compatibility."""
+    return health()
+
+# ------------------------------------------------------------------
+# TEST GOOGLE SHEETS ENDPOINT
+# ------------------------------------------------------------------
 @app.route("/gs-test", methods=["GET"])
 def gs_test():
     now_dt  = datetime.now(TZ)
@@ -155,7 +168,9 @@ def gs_test():
     else:
         return {"ok": False, "error": err}, 500
 
-
-# ---- Run ----
+# ------------------------------------------------------------------
+# RUN
+# ------------------------------------------------------------------
 if __name__ == "__main__":
+    # Bind to all interfaces (important for Render / Docker / Pi)
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
