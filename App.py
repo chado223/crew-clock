@@ -82,7 +82,7 @@ def calculate_daily_hours():
     return {crew: dict(days) for crew, days in totals.items()}
 
 # ------------------------------------------------------------------
-# GOOGLE SHEETS HELPERS (includes Drive scope for shared drives)
+# GOOGLE SHEETS HELPERS (with Drive scope + better error reporting)
 # ------------------------------------------------------------------
 def _get_gs_client():
     """Return an authenticated gspread client from the Render Secret File."""
@@ -90,26 +90,42 @@ def _get_gs_client():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",  # helps with shared-drive access
     ]
-    secret_path = "/etc/secrets/service_account.json"  # Render Secret File path
+    secret_path = "/etc/secrets/service_account.json"
     if os.path.exists(secret_path):
         creds = Credentials.from_service_account_file(secret_path, scopes=scopes)
         return gspread.authorize(creds)
     raise RuntimeError("No Google credentials found. Add Secret File on Render.")
 
 def log_to_google_sheets(date_str, ts_str, crew, action):
-    """Append a new punch row to Google Sheets."""
+    """Append a new row and return detailed errors if any."""
     try:
-        sheet_id = os.getenv("SHEET_ID")
+        sheet_id = os.getenv("SHEET_ID", "").strip()
         if not sheet_id:
             return False, "Missing SHEET_ID"
 
         gc = _get_gs_client()
-        ws = gc.open_by_key(sheet_id).sheet1
-        ws.append_row([date_str, ts_str, crew, action, "crew-clock"])
+        sh = gc.open_by_key(sheet_id)           # Raises if not shared / bad ID
+        ws = sh.sheet1                          # First worksheet
+
+        ws.append_row(
+            [date_str, ts_str, crew, action, "crew-clock"],
+            value_input_option="RAW",
+            insert_data_option="INSERT_ROWS",
+            table_range=None,
+        )
         return True, None
+
+    except gspread.exceptions.APIError as e:
+        try:
+            err_json = e.response.json()
+        except Exception:
+            err_json = str(e)
+        traceback.print_exc()
+        return False, f"APIError: {err_json}"
+
     except Exception as e:
         traceback.print_exc()
-        return False, str(e)
+        return False, f"{type(e).__name__}: {str(e)}"
 
 # ------------------------------------------------------------------
 # ROUTES
@@ -172,8 +188,47 @@ def gs_test():
         return {"ok": False, "error": err}, 500
 
 # ------------------------------------------------------------------
+# DEBUG GOOGLE SHEETS ENDPOINT
+# ------------------------------------------------------------------
+@app.route("/gs-debug", methods=["GET"])
+def gs_debug():
+    out = {}
+    try:
+        sheet_id = os.getenv("SHEET_ID", "").strip()
+        out["SHEET_ID_present"] = bool(sheet_id)
+        out["SHEET_ID_length"] = len(sheet_id)
+
+        gc = _get_gs_client()
+        out["auth"] = "ok"
+
+        sh = gc.open_by_key(sheet_id)
+        out["spreadsheet_title"] = sh.title
+        out["worksheets"] = [ws.title for ws in sh.worksheets()]
+
+        now_dt  = datetime.now(TZ)
+        date_str = now_dt.strftime("%Y-%m-%d")
+        ts_str   = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        ws = sh.sheet1
+        ws.append_row([date_str, ts_str, "DEBUG", "PING", "crew-clock"],
+                      value_input_option="RAW",
+                      insert_data_option="INSERT_ROWS",
+                      table_range=None)
+        out["append"] = "ok"
+        out["row_written"] = [date_str, ts_str, "DEBUG", "PING", "crew-clock"]
+        return out, 200
+
+    except gspread.exceptions.APIError as e:
+        try:
+            return {"ok": False, "where": "API", "error": e.response.json()}, 500
+        except Exception:
+            return {"ok": False, "where": "API", "error": str(e)}, 500
+
+    except Exception as e:
+        return {"ok": False, "where": type(e).__name__, "error": str(e)}, 500
+
+# ------------------------------------------------------------------
 # RUN
 # ------------------------------------------------------------------
 if __name__ == "__main__":
-    # Bind to all interfaces (important for Render / Docker / Pi)
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
