@@ -143,6 +143,18 @@ def health():
         return {"ok": True}, 200
     except Exception as e:
         return {"ok": False, "error": str(e)}, 500
+@app.route("/gs-test", methods=["GET"])
+def gs_test():
+    now_dt  = datetime.now(TZ)
+    date_str = now_dt.strftime("%Y-%m-%d")
+    ts_str   = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    ok, err = log_to_google_sheets(date_str, ts_str, "TEST", "PING")
+    if ok:
+        return {"ok": True, "wrote": [date_str, ts_str, "TEST", "PING"]}, 200
+    else:
+        return {"ok": False, "error": err}, 500
+
 
 # ---- Run ----
 if __name__ == "__main__":
