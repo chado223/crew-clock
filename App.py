@@ -6,7 +6,7 @@ from flask import Flask, render_template, request, redirect, url_for
 from zoneinfo import ZoneInfo
 from collections import defaultdict, deque
 
-# ---- NEW IMPORTS FOR GOOGLE SHEETS ----
+# ---- GOOGLE SHEETS IMPORTS ----
 import json, traceback
 import gspread
 from google.oauth2.service_account import Credentials
@@ -14,7 +14,7 @@ from google.oauth2.service_account import Credentials
 app = Flask(__name__)
 
 # ------------------------------------------------------------------
-# Database path now uses an environment variable for cloud storage
+# Database path (Render-ready; local default is clock.db)
 # ------------------------------------------------------------------
 DB_PATH = os.getenv("DB_PATH", "clock.db")
 
@@ -82,11 +82,14 @@ def calculate_daily_hours():
     return {crew: dict(days) for crew, days in totals.items()}
 
 # ------------------------------------------------------------------
-# GOOGLE SHEETS HELPERS
+# GOOGLE SHEETS HELPERS (includes Drive scope for shared drives)
 # ------------------------------------------------------------------
 def _get_gs_client():
     """Return an authenticated gspread client from the Render Secret File."""
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive",  # helps with shared-drive access
+    ]
     secret_path = "/etc/secrets/service_account.json"  # Render Secret File path
     if os.path.exists(secret_path):
         creds = Credentials.from_service_account_file(secret_path, scopes=scopes)
