@@ -1,3 +1,9 @@
-flask
-gunicorn
-
+Flask==3.0.0
+gunicorn==21.2.0
+python-dotenv==1.0.1
+SQLAlchemy==2.0.29
+Flask-SQLAlchemy==3.1.1
+Flask-Limiter==3.5.1
+tzdata
+gspread==6.1.2
+google-auth==2.35.0
