@@ -9,6 +9,7 @@ from collections import defaultdict, deque
 # ---- GOOGLE SHEETS IMPORTS ----
 import json, traceback
 import gspread
+from gspread import exceptions as gsex
 from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
@@ -82,13 +83,13 @@ def calculate_daily_hours():
     return {crew: dict(days) for crew, days in totals.items()}
 
 # ------------------------------------------------------------------
-# GOOGLE SHEETS HELPERS (with Drive scope + better error reporting)
+# GOOGLE SHEETS HELPERS
 # ------------------------------------------------------------------
 def _get_gs_client():
     """Return an authenticated gspread client from the Render Secret File."""
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",  # helps with shared-drive access
+        "https://www.googleapis.com/auth/drive",
     ]
     secret_path = "/etc/secrets/service_account.json"
     if os.path.exists(secret_path):
@@ -96,33 +97,63 @@ def _get_gs_client():
         return gspread.authorize(creds)
     raise RuntimeError("No Google credentials found. Add Secret File on Render.")
 
-def log_to_google_sheets(date_str, ts_str, crew, action):
-    """Append a new row and return detailed errors if any."""
+def _week_title(dt: datetime) -> str:
+    iso = dt.isocalendar()  # (year, week, weekday)
+    return f"Week {iso.year}-{iso.week:02d}"
+
+def _get_or_create_week_ws(sh, week_title: str):
+    """Find or create worksheet for that week."""
+    for ws in sh.worksheets():
+        if ws.title == week_title:
+            return ws
+    ws = sh.add_worksheet(title=week_title, rows=1000, cols=8)
+    ws.update("A1:G1", [[
+        "date", "crew", "action", "ts_in", "ts_out", "hours", "source"
+    ]])
+    return ws
+
+def _find_open_in_ts(crew: str):
+    """Return most recent unmatched IN timestamp for a crew, or None."""
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT action, ts FROM entries WHERE crew=? ORDER BY ts ASC, id ASC",
+            (crew,)
+        ).fetchall()
+    stack = []
+    for action, ts in rows:
+        if action == "IN":
+            stack.append(ts)
+        elif action == "OUT" and stack:
+            stack.pop()
+    return stack[-1] if stack else None
+
+def log_week_row(date_str, crew, action, ts_in, ts_out, hours):
+    """Append a row to the correct weekly sheet."""
     try:
         sheet_id = os.getenv("SHEET_ID", "").strip()
         if not sheet_id:
             return False, "Missing SHEET_ID"
 
         gc = _get_gs_client()
-        sh = gc.open_by_key(sheet_id)           # Raises if not shared / bad ID
-        ws = sh.sheet1                          # First worksheet
+        sh = gc.open_by_key(sheet_id)
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        week_title = _week_title(dt)
+        ws = _get_or_create_week_ws(sh, week_title)
 
         ws.append_row(
-            [date_str, ts_str, crew, action, "crew-clock"],
+            [date_str, crew, action, ts_in or "", ts_out or "", hours or "", "crew-clock"],
             value_input_option="RAW",
             insert_data_option="INSERT_ROWS",
-            table_range=None,
         )
         return True, None
 
-    except gspread.exceptions.APIError as e:
+    except gsex.APIError as e:
         try:
             err_json = e.response.json()
         except Exception:
             err_json = str(e)
         traceback.print_exc()
         return False, f"APIError: {err_json}"
-
     except Exception as e:
         traceback.print_exc()
         return False, f"{type(e).__name__}: {str(e)}"
@@ -143,21 +174,39 @@ def clock_submit():
     if not crew or action not in {"IN", "OUT"}:
         return redirect(url_for("clock_page"))
 
-    # ---- TIMESTAMP & SHEETS LOGGING ----
     now_dt = datetime.now(TZ)
     date_str = now_dt.strftime("%Y-%m-%d")
     ts_str = now_dt.strftime("%Y-%m-%d %H:%M:%S")
 
+    # Calculate hours if OUT
+    ts_in_val = None
+    ts_out_val = None
+    hours_val = None
+    if action == "OUT":
+        open_in_ts = _find_open_in_ts(crew)
+        if open_in_ts:
+            ts_in_val = open_in_ts
+            ts_out_val = ts_str
+            t_in = datetime.strptime(open_in_ts, "%Y-%m-%d %H:%M:%S").replace(tzinfo=TZ)
+            t_out = now_dt
+            hours_val = round((t_out - t_in).total_seconds() / 3600.0, 2)
+
+    # Write to DB
     insert_entry(crew, action, ts_str)
 
-    ok, err = log_to_google_sheets(date_str, ts_str, crew, action)
+    # Log to Sheet
+    if action == "IN":
+        ok, err = log_week_row(date_str, crew, action, ts_in=ts_str, ts_out=None, hours=None)
+    else:
+        ok, err = log_week_row(date_str, crew, action, ts_in=ts_in_val, ts_out=ts_out_val, hours=hours_val)
+
     if not ok:
         print("Sheets logging failed:", err)
 
     return redirect(url_for("clock_page"))
 
 # ------------------------------------------------------------------
-# HEALTH ENDPOINTS (for Render)
+# HEALTH / TEST
 # ------------------------------------------------------------------
 @app.route("/health")
 def health():
@@ -169,61 +218,47 @@ def health():
 
 @app.route("/healthz")
 def healthz():
-    """Secondary health endpoint for Render compatibility."""
     return health()
 
-# ------------------------------------------------------------------
-# TEST GOOGLE SHEETS ENDPOINT
-# ------------------------------------------------------------------
 @app.route("/gs-test", methods=["GET"])
 def gs_test():
-    now_dt  = datetime.now(TZ)
+    now_dt = datetime.now(TZ)
     date_str = now_dt.strftime("%Y-%m-%d")
-    ts_str   = now_dt.strftime("%Y-%m-%d %H:%M:%S")
-
-    ok, err = log_to_google_sheets(date_str, ts_str, "TEST", "PING")
+    ts_str = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+    ok, err = log_week_row(date_str, "TEST", "PING", ts_in=ts_str, ts_out=None, hours=None)
     if ok:
-        return {"ok": True, "wrote": [date_str, ts_str, "TEST", "PING"]}, 200
+        return {"ok": True, "wrote": [date_str, "TEST", "PING"]}, 200
     else:
         return {"ok": False, "error": err}, 500
 
-# ------------------------------------------------------------------
-# DEBUG GOOGLE SHEETS ENDPOINT
-# ------------------------------------------------------------------
 @app.route("/gs-debug", methods=["GET"])
 def gs_debug():
     out = {}
     try:
         sheet_id = os.getenv("SHEET_ID", "").strip()
         out["SHEET_ID_present"] = bool(sheet_id)
-        out["SHEET_ID_length"] = len(sheet_id)
-
         gc = _get_gs_client()
         out["auth"] = "ok"
-
         sh = gc.open_by_key(sheet_id)
         out["spreadsheet_title"] = sh.title
         out["worksheets"] = [ws.title for ws in sh.worksheets()]
-
-        now_dt  = datetime.now(TZ)
+        now_dt = datetime.now(TZ)
         date_str = now_dt.strftime("%Y-%m-%d")
-        ts_str   = now_dt.strftime("%Y-%m-%d %H:%M:%S")
-
-        ws = sh.sheet1
-        ws.append_row([date_str, ts_str, "DEBUG", "PING", "crew-clock"],
+        ts_str = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+        week_title = _week_title(now_dt)
+        ws = _get_or_create_week_ws(sh, week_title)
+        ws.append_row([date_str, "DEBUG", "PING", ts_str, "", "", "crew-clock"],
                       value_input_option="RAW",
-                      insert_data_option="INSERT_ROWS",
-                      table_range=None)
+                      insert_data_option="INSERT_ROWS")
         out["append"] = "ok"
-        out["row_written"] = [date_str, ts_str, "DEBUG", "PING", "crew-clock"]
+        out["week_title"] = week_title
+        out["row_written"] = [date_str, "DEBUG", "PING", ts_str]
         return out, 200
-
-    except gspread.exceptions.APIError as e:
+    except gsex.APIError as e:
         try:
             return {"ok": False, "where": "API", "error": e.response.json()}, 500
         except Exception:
             return {"ok": False, "where": "API", "error": str(e)}, 500
-
     except Exception as e:
         return {"ok": False, "where": type(e).__name__, "error": str(e)}, 500
 
