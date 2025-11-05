@@ -2,9 +2,9 @@
 import os
 import sqlite3
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, request as flask_request
 from zoneinfo import ZoneInfo
-from collections import defaultdict, deque
+from collections import defaultdict, deque, OrderedDict
 
 # ---- GOOGLE SHEETS IMPORTS ----
 import json, traceback
@@ -112,6 +112,26 @@ def _get_or_create_week_ws(sh, week_title: str):
     ]])
     return ws
 
+def _get_or_create_totals_ws(sh, week_title: str):
+    """Find or create the totals worksheet for that week."""
+    totals_title = f"Totals {week_title}"
+    for ws in sh.worksheets():
+        if ws.title == totals_title:
+            return ws
+    ws = sh.add_worksheet(title=totals_title, rows=200, cols=4)
+    ws.update("A1:C1", [["crew", "total_hours", "updated_at"]])
+    return ws
+
+def _get_or_create_all_weeks_ws(sh):
+    """Find or create the global summary sheet."""
+    title = "All Weeks Summary"
+    for ws in sh.worksheets():
+        if ws.title == title:
+            return ws
+    ws = sh.add_worksheet(title=title, rows=5000, cols=4)
+    ws.update("A1:D1", [["week_title", "crew", "total_hours", "updated_at"]])
+    return ws
+
 def _find_open_in_ts(crew: str):
     """Return most recent unmatched IN timestamp for a crew, or None."""
     with sqlite3.connect(DB_PATH) as conn:
@@ -141,10 +161,113 @@ def log_week_row(date_str, crew, action, ts_in, ts_out, hours):
         ws = _get_or_create_week_ws(sh, week_title)
 
         ws.append_row(
-            [date_str, crew, action, ts_in or "", ts_out or "", hours or "", "crew-clock"],
+            [date_str, crew, action, ts_in or "", ts_out or "", hours if hours is not None else "", "crew-clock"],
             value_input_option="RAW",
             insert_data_option="INSERT_ROWS",
         )
+        return True, None
+    except gsex.APIError as e:
+        try:
+            err_json = e.response.json()
+        except Exception:
+            err_json = str(e)
+        traceback.print_exc()
+        return False, f"APIError: {err_json}"
+    except Exception as e:
+        traceback.print_exc()
+        return False, f"{type(e).__name__}: {str(e)}"
+
+def update_all_weeks_summary(sh, week_title: str, ordered_totals: OrderedDict, updated_at: str):
+    """
+    Upsert rows for a single week into All Weeks Summary.
+    Strategy: read existing rows, keep all rows for other weeks,
+    replace rows for this week with the new set.
+    """
+    ws = _get_or_create_all_weeks_ws(sh)
+    values = ws.get_all_values()
+    rows = [["week_title", "crew", "total_hours", "updated_at"]]
+
+    # Keep existing rows except the ones for this week_title
+    if values and len(values) > 1:
+        header = values[0]
+        idx = {name: i for i, name in enumerate(header)}
+        for row in values[1:]:
+            if len(row) < 2:
+                continue
+            if row[0] != week_title:
+                rows.append([row[idx.get("week_title",0)],
+                             row[idx.get("crew",1)],
+                             row[idx.get("total_hours",2)],
+                             row[idx.get("updated_at",3)]])
+    # Add new rows for this week
+    for crew, hrs in ordered_totals.items():
+        rows.append([week_title, crew, round(hrs, 2), updated_at])
+    # Add grand total row
+    if ordered_totals:
+        grand = round(sum(ordered_totals.values()), 2)
+        rows.append([week_title, "__WEEK_TOTAL__", grand, updated_at])
+
+    ws.clear()
+    ws.update(f"A1:D{len(rows)}", rows)
+
+def update_weekly_totals_for_week(week_title: str):
+    """Rebuild 'Totals Week YYYY-WW' from rows in 'Week YYYY-WW' and update All Weeks Summary."""
+    try:
+        sheet_id = os.getenv("SHEET_ID", "").strip()
+        if not sheet_id:
+            return False, "Missing SHEET_ID"
+
+        gc = _get_gs_client()
+        sh = gc.open_by_key(sheet_id)
+
+        # Source sheet
+        week_ws = _get_or_create_week_ws(sh, week_title)
+        values = week_ws.get_all_values()
+        totals_ws = _get_or_create_totals_ws(sh, week_title)
+
+        if not values or len(values) < 2:
+            totals_ws.clear()
+            totals_ws.update("A1:C1", [["crew", "total_hours", "updated_at"]])
+            # Also clear the All Weeks entry for this week
+            update_all_weeks_summary(sh, week_title, OrderedDict(), datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"))
+            return True, None
+
+        header = values[0]
+        idx = {name: i for i, name in enumerate(header)}
+        required = ["crew", "action", "hours"]
+        if not all(col in idx for col in required):
+            return False, f"Missing columns in {week_title}: need {required}, have {header}"
+
+        totals = defaultdict(float)
+        for row in values[1:]:
+            try:
+                action = row[idx["action"]].strip().upper()
+                if action != "OUT":
+                    continue
+                crew = row[idx["crew"]].strip()
+                hrs_str = row[idx["hours"]].strip()
+                if not hrs_str:
+                    continue
+                hrs = float(hrs_str)
+                totals[crew] += hrs
+            except Exception:
+                continue
+
+        ordered = OrderedDict(sorted(totals.items(), key=lambda x: x[0].lower()))
+        now_str = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+        # Write Totals sheet
+        totals_ws.clear()
+        rows = [["crew", "total_hours", "updated_at"]]
+        for crew, hrs in ordered.items():
+            rows.append([crew, round(hrs, 2), now_str])
+        if rows and len(rows) > 1:
+            grand = round(sum(v for v in totals.values()), 2)
+            rows.append(["__WEEK_TOTAL__", grand, now_str])
+        totals_ws.update(f"A1:C{len(rows)}", rows)
+
+        # Update global All Weeks Summary
+        update_all_weeks_summary(sh, week_title, ordered, now_str)
         return True, None
 
     except gsex.APIError as e:
@@ -194,11 +317,16 @@ def clock_submit():
     # Write to DB
     insert_entry(crew, action, ts_str)
 
-    # Log to Sheet
+    # Log to Week sheet
     if action == "IN":
         ok, err = log_week_row(date_str, crew, action, ts_in=ts_str, ts_out=None, hours=None)
     else:
         ok, err = log_week_row(date_str, crew, action, ts_in=ts_in_val, ts_out=ts_out_val, hours=hours_val)
+        # Recompute totals for the week on every OUT (updates Totals and All Weeks Summary)
+        week_title = _week_title(now_dt)
+        ok2, err2 = update_weekly_totals_for_week(week_title)
+        if not ok2:
+            print("Totals update failed:", err2)
 
     if not ok:
         print("Sheets logging failed:", err)
@@ -206,7 +334,7 @@ def clock_submit():
     return redirect(url_for("clock_page"))
 
 # ------------------------------------------------------------------
-# HEALTH / TEST
+# HEALTH / TEST / ADMIN
 # ------------------------------------------------------------------
 @app.route("/health")
 def health():
@@ -261,6 +389,28 @@ def gs_debug():
             return {"ok": False, "where": "API", "error": str(e)}, 500
     except Exception as e:
         return {"ok": False, "where": type(e).__name__, "error": str(e)}, 500
+
+@app.route("/rebuild-totals", methods=["POST", "GET"])
+def rebuild_totals():
+    """
+    Manually rebuild totals for a specific week.
+    Use: GET /rebuild-totals?week=2025-45
+    (If omitted, uses current week.)
+    """
+    try:
+        q = flask_request.args.get("week", "").strip()
+        if q:
+            year, week = q.split("-")
+            week_title = f"Week {int(year)}-{int(week):02d}"
+        else:
+            week_title = _week_title(datetime.now(TZ))
+
+        ok, err = update_weekly_totals_for_week(week_title)
+        if ok:
+            return {"ok": True, "week_title": week_title}, 200
+        return {"ok": False, "week_title": week_title, "error": err}, 500
+    except Exception as e:
+        return {"ok": False, "error": str(e)}, 500
 
 # ------------------------------------------------------------------
 # RUN
