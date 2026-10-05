@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 .env
 clock.db
+# platform (Node)
+node_modules/
+.next/
+.expo/
+dist/
+*.tsbuildinfo
+.env.local

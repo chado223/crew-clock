@@ -1,0 +1,24 @@
+.page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.panel {
+  width: 100%;
+  max-width: 420px;
+  display: grid;
+  gap: 18px;
+}
+
+.brand {
+  font-family: var(--font-figure);
+  font-weight: 600;
+  font-size: 1.5rem;
+  color: var(--turf);
+}
+
+.lede { color: var(--ink-soft); }
+
+.form { display: grid; gap: 16px; }

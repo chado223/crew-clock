@@ -1,0 +1,54 @@
+.page { display: grid; gap: 40px; }
+
+.header { display: grid; gap: 4px; }
+.date { color: var(--ink-soft); }
+
+/* The one loud element: who is working right now. */
+.onClock {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  border-radius: var(--radius-panel);
+  background: var(--ink);
+  color: #f1f5ee;
+}
+.count {
+  display: inline-block;
+  min-width: 1.6em;
+  margin-left: 8px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--hivis);
+  color: var(--ink);
+  text-align: center;
+}
+.roster { list-style: none; margin: 0; padding: 0; display: grid; }
+.person {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name elapsed" "since elapsed";
+  align-items: center;
+  padding: 14px 0;
+  border-top: 1px solid #2f4035;
+}
+.person:first-child { border-top: 0; }
+.name { grid-area: name; font-weight: 600; font-size: 1.1rem; }
+.since { grid-area: since; color: #b9c6b6; font-size: 0.95rem; }
+.elapsed { grid-area: elapsed; font-size: 2.5rem; font-weight: 600; line-height: 1; color: var(--hivis); }
+
+.block { display: grid; gap: 14px; }
+.empty { color: var(--ink-soft); }
+
+.table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: var(--radius-panel); overflow: hidden; }
+.table th,
+.table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--line); }
+.table th { font-weight: 600; font-size: 0.9rem; color: var(--ink-soft); }
+.table tr:last-child td { border-bottom: 0; }
+.num { text-align: right !important; }
+.table td.num { font-size: 1.15rem; }
+
+@media (max-width: 760px) {
+  .onClock { padding: 18px; }
+  .elapsed { font-size: 2rem; }
+  .table th, .table td { padding: 10px 12px; }
+}

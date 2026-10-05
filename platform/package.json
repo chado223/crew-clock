@@ -1,0 +1,13 @@
+{
+  "name": "crew-platform",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build:web": "npm run build -w @crew/web",
+    "test:db": "bash supabase/tests/run.sh"
+  }
+}

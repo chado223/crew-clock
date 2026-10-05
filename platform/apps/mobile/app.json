@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Crew",
+    "slug": "crew",
+    "scheme": "crew",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.cwlc.crew",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.cwlc.crew"
+    },
+    "plugins": ["expo-router", "expo-font"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

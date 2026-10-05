@@ -1,0 +1,29 @@
+.page { display: grid; gap: 36px; }
+
+.invite { display: grid; gap: 14px; max-width: 640px; }
+.form { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; align-items: end; }
+.form > :nth-child(3) { grid-column: 1 / -1; }
+.form > button { justify-self: start; }
+.link { width: 100%; margin-top: 8px; font-size: 0.9rem; }
+
+.people { display: grid; gap: 10px; }
+.sub { font-size: 1rem; margin-top: 16px; color: var(--ink-soft); }
+.list { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius-panel); }
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.row:last-child { border-bottom: 0; }
+.name { font-weight: 600; }
+.meta { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.role { color: var(--ink-soft); text-transform: capitalize; }
+
+@media (max-width: 760px) {
+  .form { grid-template-columns: 1fr; }
+  .row { grid-template-columns: 1fr auto; }
+  .meta { grid-column: 1 / -1; grid-row: 2; }
+}
