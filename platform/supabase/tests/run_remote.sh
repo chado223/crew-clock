@@ -29,7 +29,9 @@ for tf in $(ls "$HERE"/*.sql | sort); do
   res="$(grep '^##|' <<<"$out" | cut -d'|' -f2- || true)"
   pass=$(grep -c '^t|' <<<"$res" || true); fail=$(grep -c '^f|' <<<"$res" || true)
   printf "  %-34s %3d passed, %d failed\n" "$(basename "$tf")" "$pass" "$fail"
+  [[ -n "${GITHUB_ACTIONS:-}" ]] && echo "::notice title=staging-tests::$(basename "$tf"): $pass passed, $fail failed"
   grep '^f|' <<<"$res" | sed 's/^f|/    FAIL: /' || true
+  [[ -n "${GITHUB_ACTIONS:-}" ]] && grep '^f|' <<<"$res" | sed 's/^f|/::error title=staging-test-failure::/' || true
   if [[ $pass -eq 0 && $fail -eq 0 ]]; then echo "    no results; output:"; echo "$out" | tail -5; total_fail=$((total_fail+1)); fi
   total_fail=$((total_fail+fail))
 done
