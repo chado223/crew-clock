@@ -122,3 +122,10 @@ select tests.throws($$insert into public.time_entries (tenant_id, employee_id, c
 select tests.throws($$insert into public.time_entries (tenant_id, employee_id, clock_in, clock_out)
   values ('aaaaaaaa-0000-0000-0000-000000000000', 'ea000000-0000-0000-0000-000000000005', '2026-12-01 10:00+00', '2026-12-01 09:00+00')$$,
   '%time_entries_out_after_in_chk%', 'Clock-out before clock-in blocked at the database');
+
+-- Deleting a login keeps that person's time history (production cascaded it away)
+select count(*) as before_n from public.time_entries where employee_id = 'ea000000-0000-0000-0000-000000000004' \gset
+delete from public.memberships where user_id = 'a0000000-0000-0000-0000-000000000004';
+delete from auth.users where id = 'a0000000-0000-0000-0000-000000000004';
+select tests.is((select count(*) from public.time_entries where employee_id = 'ea000000-0000-0000-0000-000000000004'), :'before_n'::bigint,
+  'Deleting a user account keeps their time entries');

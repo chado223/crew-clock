@@ -1,29 +1,47 @@
--- Baseline: the schema as described in the project handoff (2026-10-05).
+-- Baseline: the production schema as it actually exists in Supabase project
+-- iwowjrnrbjiydckhjsfi (inspected 2026-10-05, Postgres 17).
 --
--- Every statement is IF NOT EXISTS, so on the existing production project this
--- file changes nothing; on a fresh project (staging, local, CI) it creates the
--- starting tables. Once Supabase is connected, this file will be checked against
--- the real production schema and corrected to match it exactly.
+-- Every statement is IF NOT EXISTS / guarded, so on production this file is a
+-- no-op; on staging, local and CI it recreates production's starting point.
+-- Policies and helper functions are NOT here: production's versions are
+-- reproduced in tests/fixtures/10_legacy_existing_state.sql, and
+-- 20261005000100_foundation.sql replaces all of them.
 --
--- No policies here: 20261005000100_foundation.sql replaces all policies.
+-- Note: public.scenarios and profiles.email/stripe_customer_id/is_pro belong to
+-- a different app sharing this project. They are reproduced so tests prove the
+-- migrations leave them working.
+
+do $$ begin
+  create type public.user_role as enum ('owner', 'admin', 'crew');
+exception when duplicate_object then null; end $$;
 
 create table if not exists public.tenants (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  plan text not null default 'trial',
+  plan text not null default 'free',
   created_at timestamptz not null default now()
 );
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  full_name text,
-  created_at timestamptz not null default now()
+  email text,
+  stripe_customer_id text,
+  is_pro boolean default false,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.scenarios (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users (id) on delete cascade,
+  name text,
+  payload jsonb,
+  created_at timestamptz default now()
 );
 
 create table if not exists public.memberships (
   tenant_id uuid not null references public.tenants (id) on delete cascade,
   user_id uuid not null references auth.users (id) on delete cascade,
-  role text not null,
+  role public.user_role not null default 'crew',
   created_at timestamptz not null default now(),
   primary key (tenant_id, user_id)
 );
@@ -41,7 +59,7 @@ create table if not exists public.clients (
 create table if not exists public.jobs (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants (id) on delete cascade,
-  client_id uuid references public.clients (id),
+  client_id uuid references public.clients (id) on delete set null,
   title text not null,
   schedule jsonb,
   crew_id uuid,
@@ -52,8 +70,8 @@ create table if not exists public.jobs (
 create table if not exists public.time_entries (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants (id) on delete cascade,
-  user_id uuid references auth.users (id),
-  job_id uuid references public.jobs (id),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  job_id uuid references public.jobs (id) on delete set null,
   clock_in timestamptz not null,
   clock_out timestamptz,
   notes text,
@@ -63,11 +81,11 @@ create table if not exists public.time_entries (
 create table if not exists public.invoices (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants (id) on delete cascade,
-  client_id uuid references public.clients (id),
-  total numeric(12,2) not null default 0,
+  client_id uuid not null references public.clients (id) on delete cascade,
+  total numeric not null default 0,
   status text not null default 'draft',
   pdf_url text,
-  issued_at timestamptz,
+  issued_at timestamptz not null default now(),
   due_at timestamptz
 );
 
@@ -75,7 +93,25 @@ create table if not exists public.expenses (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants (id) on delete cascade,
   category text not null,
-  amount numeric(12,2) not null,
-  spent_at timestamptz not null default now(),
+  amount numeric not null,
+  spent_at date not null default current_date,
   note text
 );
+
+alter table public.tenants enable row level security;
+alter table public.profiles enable row level security;
+alter table public.scenarios enable row level security;
+alter table public.memberships enable row level security;
+alter table public.clients enable row level security;
+alter table public.jobs enable row level security;
+alter table public.time_entries enable row level security;
+alter table public.invoices enable row level security;
+alter table public.expenses enable row level security;
+
+-- The other app's policies on its own table (production, unchanged by this platform)
+do $$ begin
+  create policy "scenarios owner" on public.scenarios for select using (auth.uid() = user_id);
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create policy "scenarios write owner" on public.scenarios for insert with check (auth.uid() = user_id);
+exception when duplicate_object then null; end $$;

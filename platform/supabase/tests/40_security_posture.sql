@@ -9,8 +9,9 @@ select tests.is(
 
 select tests.is(
   (select string_agg(table_name || ':' || privilege_type, ', ') from information_schema.role_table_grants
-    where table_schema = 'public' and grantee in ('anon', 'PUBLIC')),
-  null, 'anon has no table privileges');
+    where table_schema = 'public' and grantee in ('anon', 'PUBLIC')
+      and table_name <> 'scenarios'),  -- belongs to another app sharing the project
+  null, 'anon has no privileges on platform tables');
 
 select tests.is(
   (select string_agg(p.oid::regprocedure::text, ', ') from pg_proc p join pg_namespace n on n.oid = p.pronamespace

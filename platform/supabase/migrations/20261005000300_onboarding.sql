@@ -116,7 +116,7 @@ begin
   end if;
 
   perform set_config('app.audit_reason', 'accept_invitation', true);
-  insert into public.memberships (tenant_id, user_id, role) values (v_inv.tenant_id, v_uid, v_inv.role);
+  insert into public.memberships (tenant_id, user_id, role) values (v_inv.tenant_id, v_uid, v_inv.role::public.user_role);
 
   if v_inv.employee_id is not null then
     update public.employees set user_id = v_uid, status = 'active'
@@ -162,7 +162,7 @@ begin
     raise exception 'cannot_remove_last_owner' using errcode = '22023';
   end if;
   perform set_config('app.audit_reason', 'set_member_role', true);
-  update public.memberships set role = p_role where tenant_id = p_tenant_id and user_id = p_user_id;
+  update public.memberships set role = p_role::public.user_role where tenant_id = p_tenant_id and user_id = p_user_id;
 end $$;
 
 -- Removes login access. The employee record and all time history stay.
@@ -188,7 +188,7 @@ end $$;
 create or replace function public.my_companies()
 returns table (tenant_id uuid, name text, role text, employee_id uuid, timezone text)
 language sql stable security invoker set search_path = '' as $$
-  select t.id, t.name, m.role, e.id, t.timezone
+  select t.id, t.name, m.role::text, e.id, t.timezone
   from public.memberships m
   join public.tenants t on t.id = m.tenant_id
   left join public.employees e on e.tenant_id = m.tenant_id and e.user_id = m.user_id

@@ -1,19 +1,23 @@
 -- Table and function privileges. Re-runnable; keep this file LAST so it covers
--- everything created before it. Future migrations that add tables or functions
--- must add their grants here (a test fails if anything is left open).
+-- everything created before it. New tables/functions must add grants here
+-- (tests/40_security_posture.sql fails if a table is left open to anon).
 --
--- Supabase grants ALL on new public tables to anon and authenticated by
--- default. We replace that with least privilege:
+-- Only tables this platform owns are touched. public.scenarios (another app
+-- sharing this Supabase project) keeps its existing grants and policies.
 --   anon          : nothing
 --   authenticated : only what each table's RLS policies are designed for
 --   service_role  : everything (server-side only, bypasses RLS)
 
-alter default privileges in schema public revoke all on tables from anon, authenticated;
-alter default privileges in schema public revoke all on sequences from anon, authenticated;
-alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
-
-revoke all on all tables in schema public from anon, authenticated;
-revoke all on all sequences in schema public from anon, authenticated;
+do $$
+declare t text;
+begin
+  foreach t in array array['tenants','profiles','memberships','employees','employee_pay_rates','crews','crew_members',
+                           'clients','properties','jobs','time_entries','time_entry_breaks','invoices','expenses',
+                           'invitations','audit_log','activity'] loop
+    execute format('revoke all on public.%I from anon, authenticated', t);
+  end loop;
+end $$;
+revoke all on sequence public.audit_log_id_seq from anon, authenticated;
 revoke execute on all functions in schema public from public, anon, authenticated;
 revoke execute on all functions in schema private from public, anon, authenticated;
 
@@ -27,7 +31,8 @@ grant select, insert, update, delete on public.clients, public.properties, publi
   public.crews, public.crew_members, public.invoices, public.expenses to authenticated;
 grant select, insert, update on public.employees to authenticated;
 grant select, insert on public.employee_pay_rates, public.activity to authenticated;
-grant select, insert, update on public.profiles to authenticated;
+grant select, insert (id, full_name) on public.profiles to authenticated;
+grant update (full_name) on public.profiles to authenticated;
 
 -- Read-only tables (all changes go through functions)
 grant select on public.memberships, public.time_entries, public.time_entry_breaks,

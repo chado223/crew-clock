@@ -51,28 +51,26 @@ create trigger tenants_validate_tz before insert or update of timezone on public
 -- ---------------------------------------------------------------------------
 -- Memberships (login access to a company)
 -- ---------------------------------------------------------------------------
-do $$ begin
-  alter table public.memberships add constraint memberships_role_chk check (role in ('owner','admin','crew')) not valid;
-exception when duplicate_object then null; end $$;
-do $$ begin
-  alter table public.memberships validate constraint memberships_role_chk;
-exception when check_violation then
-  raise warning 'memberships contain roles outside owner/admin/crew; constraint enforced for new rows only';
-end $$;
+-- role is the enum public.user_role (owner | admin | crew), which already
+-- restricts values.
 create index if not exists memberships_user_idx on public.memberships (user_id);
 
 -- ---------------------------------------------------------------------------
 -- Profiles
 -- ---------------------------------------------------------------------------
-alter table public.profiles add column if not exists updated_at timestamptz not null default now();
+-- profiles is shared with another app in this project (email, stripe_customer_id,
+-- is_pro). We only add columns; users may edit only full_name (see privileges).
+alter table public.profiles
+  add column if not exists full_name text,
+  add column if not exists updated_at timestamptz not null default now();
 
 -- Create a profile for every new auth user. Named to run after any existing
 -- trigger, and ON CONFLICT so it never breaks sign-up if one already exists.
 create or replace function private.handle_new_user() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  insert into public.profiles (id, full_name)
-  values (new.id, nullif(trim(coalesce(new.raw_user_meta_data ->> 'full_name', '')), ''))
+  insert into public.profiles (id, email, full_name)
+  values (new.id, new.email, nullif(trim(coalesce(new.raw_user_meta_data ->> 'full_name', '')), ''))
   on conflict (id) do nothing;
   return new;
 end $$;
@@ -80,10 +78,37 @@ drop trigger if exists zz_cc_on_auth_user_created on auth.users;
 create trigger zz_cc_on_auth_user_created after insert on auth.users
   for each row execute function private.handle_new_user();
 
-insert into public.profiles (id, full_name)
-select u.id, nullif(trim(coalesce(u.raw_user_meta_data ->> 'full_name', '')), '')
+insert into public.profiles (id, email, full_name)
+select u.id, u.email, nullif(trim(coalesce(u.raw_user_meta_data ->> 'full_name', '')), '')
 from auth.users u
 on conflict (id) do nothing;
+
+-- ---------------------------------------------------------------------------
+-- Stop deletes from cascading into business history.
+-- Production had ON DELETE CASCADE from auth.users -> time_entries (deleting a
+-- login would erase that person's hours), clients -> invoices, and tenants ->
+-- every business table. Company deletion will be an explicit, audited,
+-- retention-aware process (Phase 8), never a cascade.
+-- ---------------------------------------------------------------------------
+alter table public.time_entries alter column user_id drop not null;
+do $$
+declare r record;
+begin
+  for r in
+    select * from (values
+      ('time_entries', 'time_entries_user_id_fkey',   '(user_id) references auth.users (id) on delete set null'),
+      ('time_entries', 'time_entries_tenant_id_fkey', '(tenant_id) references public.tenants (id) on delete restrict'),
+      ('clients',      'clients_tenant_id_fkey',      '(tenant_id) references public.tenants (id) on delete restrict'),
+      ('jobs',         'jobs_tenant_id_fkey',         '(tenant_id) references public.tenants (id) on delete restrict'),
+      ('invoices',     'invoices_tenant_id_fkey',     '(tenant_id) references public.tenants (id) on delete restrict'),
+      ('invoices',     'invoices_client_id_fkey',     '(client_id) references public.clients (id) on delete restrict'),
+      ('expenses',     'expenses_tenant_id_fkey',     '(tenant_id) references public.tenants (id) on delete restrict')
+    ) v(tbl, name, def)
+  loop
+    execute format('alter table public.%I drop constraint if exists %I', r.tbl, r.name);
+    execute format('alter table public.%I add constraint %I foreign key %s', r.tbl, r.name, r.def);
+  end loop;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Parent keys for tenant-safe foreign keys: (tenant_id, id)
@@ -443,6 +468,7 @@ create policy profiles_select on public.profiles for select to authenticated
 create policy profiles_insert on public.profiles for insert to authenticated with check (id = (select auth.uid()));
 create policy profiles_update on public.profiles for update to authenticated
   using (id = (select auth.uid())) with check (id = (select auth.uid()));
+-- (column privileges limit what can be updated to full_name)
 
 -- memberships: read your company's roster; changes only through functions
 create policy memberships_select on public.memberships for select to authenticated using (public.in_tenant(tenant_id));

@@ -47,11 +47,13 @@ build_template() { # $1 = scenario
     "${PSQL[@]}" -d "$db" -f "$f"
     if [[ $first == 1 && $1 == upgrade ]]; then
       "${PSQL[@]}" -d "$db" -f "$F/10_legacy_existing_state.sql"
-      "${PSQL[@]}" -d "$db" -At -c "create table tests.before_counts as
-        select 'clients' t, count(*) n from clients union all select 'jobs', count(*) from jobs
-        union all select 'time_entries', count(*) from time_entries union all select 'invoices', count(*) from invoices
-        union all select 'expenses', count(*) from expenses union all select 'memberships', count(*) from memberships
-        union all select 'tenants', count(*) from tenants union all select 'profiles', count(*) from profiles"
+      # Snapshot every existing row (as JSON) so tests can prove none was lost or changed.
+      "${PSQL[@]}" -d "$db" -c "create table tests.before_rows as
+        select 'tenants' t, to_jsonb(x) r from public.tenants x union all select 'clients', to_jsonb(x) from public.clients x
+        union all select 'jobs', to_jsonb(x) from public.jobs x union all select 'invoices', to_jsonb(x) from public.invoices x
+        union all select 'expenses', to_jsonb(x) from public.expenses x union all select 'time_entries', to_jsonb(x) from public.time_entries x
+        union all select 'memberships', to_jsonb(x) from public.memberships x union all select 'profiles', to_jsonb(x) from public.profiles x
+        union all select 'scenarios', to_jsonb(x) from public.scenarios x"
     fi
     first=0
   done

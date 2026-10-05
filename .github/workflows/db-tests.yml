@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15      # Supabase runs Postgres 15
+        image: postgres:17      # production Supabase runs Postgres 17
         env:
           POSTGRES_PASSWORD: postgres
         ports: ["5432:5432"]
