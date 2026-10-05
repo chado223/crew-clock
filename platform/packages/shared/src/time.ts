@@ -37,3 +37,40 @@ export function weekStart(date: Date, timeZone: string, weekStartIsoDay = 1): st
 export function formatClockTime(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(iso));
 }
+
+/** Offset (ms) of `timeZone` from UTC at instant `date`. */
+function zoneOffsetMs(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(date);
+  const n = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  const asUtc = Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second"));
+  return asUtc - date.getTime();
+}
+
+/**
+ * "2026-10-05T07:30" entered by a manager, meaning wall-clock time in the
+ * company's zone -> exact ISO instant. Correct across DST changes.
+ */
+export function zonedLocalToIso(local: string, timeZone: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(local);
+  if (!m) throw new Error("invalid_local_time");
+  const guess = Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!);
+  let t = guess - zoneOffsetMs(new Date(guess), timeZone);
+  t = guess - zoneOffsetMs(new Date(t), timeZone); // second pass settles DST edges
+  return new Date(t).toISOString();
+}
+
+/** Exact instant -> "YYYY-MM-DDTHH:mm" in the company's zone (for <input type="datetime-local">). */
+export function isoToZonedLocal(iso: string, timeZone: string): string {
+  const d = new Date(iso);
+  const local = new Date(d.getTime() + zoneOffsetMs(d, timeZone));
+  return local.toISOString().slice(0, 16);
+}
