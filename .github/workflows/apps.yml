@@ -22,15 +22,26 @@ jobs:
       - name: Typecheck shared
         run: npm run typecheck -w @crew/shared
       - name: Typecheck mobile
-        run: npm run typecheck -w @crew/mobile
+        run: |
+          set -o pipefail
+          npm run typecheck -w @crew/mobile 2>&1 | tee /tmp/tc.txt || { grep "error TS" /tmp/tc.txt | head -25 | sed 's/^/::error title=mobile-tsc::/'; exit 1; }
       - name: Expo dependency check
         working-directory: platform/apps/mobile
-        run: npx expo install --check
+        run: |
+          set -o pipefail
+          if ! npx expo install --check 2>&1 | tee /tmp/expo-check.txt; then
+            npx expo install --fix > /dev/null 2>&1 || true
+            node -e "const d=require('./package.json');console.log(JSON.stringify({...d.dependencies,...d.devDependencies}))" | sed 's/^/::error title=expo-fixed-versions::/'
+            grep -v '^$' /tmp/expo-check.txt | head -20 | sed 's/^/::error title=expo-check::/'
+            exit 1
+          fi
       - name: Build web
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
           NEXT_TELEMETRY_DISABLED: "1"
-        run: npm run build -w @crew/web
+        run: |
+          set -o pipefail
+          npm run build -w @crew/web 2>&1 | tee /tmp/build.txt || { grep -iE "error|failed|Type " /tmp/build.txt | head -25 | sed 's/^/::error title=web-build::/'; exit 1; }
       - name: Typecheck web
         run: npm run typecheck -w @crew/web
