@@ -74,3 +74,14 @@ export function isoToZonedLocal(iso: string, timeZone: string): string {
   const local = new Date(d.getTime() + zoneOffsetMs(d, timeZone));
   return local.toISOString().slice(0, 16);
 }
+
+/** $1,234.50 */
+export function formatMoney(n: number | string | null | undefined, cents = true): string {
+  const v = Number(n ?? 0);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: cents ? 2 : 0,
+    maximumFractionDigits: cents ? 2 : 0,
+  }).format(Number.isFinite(v) ? v : 0);
+}

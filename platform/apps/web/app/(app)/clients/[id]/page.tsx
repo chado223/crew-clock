@@ -130,7 +130,7 @@ export default async function ClientPage({
   const [{ data: client }, { data: properties }, { data: timeline }] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).maybeSingle(),
     supabase.from("properties").select("*").eq("client_id", id).order("created_at"),
-    supabase.from("activity").select("id, kind, summary, occurred_at").eq("client_id", id).order("occurred_at", { ascending: false }).limit(100),
+    supabase.from("activity").select("id, kind, summary, occurred_at").eq("client_id", id).order("occurred_at", { ascending: false }).order("seq", { ascending: false }).limit(100),
   ]);
   const [{ data: jobs }, { data: crews }, { data: upcoming }] = await Promise.all([
     supabase.from("jobs").select("id, title, kind, status, price, interval_weeks, weekday, property_id, crews(name)").eq("client_id", id).order("created_at"),
@@ -169,6 +169,8 @@ export default async function ClientPage({
             ))}
           </select>
           <button className="button quiet" type="submit">Update status</button>
+          <Link href="/estimates" className="button quiet">New estimate</Link>
+          <Link href={`/invoices?client=${client.id}`} className="button quiet">Bill completed work</Link>
         </form>
       </header>
 

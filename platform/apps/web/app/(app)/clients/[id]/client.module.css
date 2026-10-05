@@ -2,7 +2,7 @@
 .back { font-weight: 500; text-decoration: none; }
 .header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 .sub { color: var(--ink-soft); margin-top: 4px; }
-.statusForm { display: flex; gap: 8px; }
+.statusForm { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .columns { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 28px; align-items: start; }
 .main, .side { display: grid; gap: 24px; }

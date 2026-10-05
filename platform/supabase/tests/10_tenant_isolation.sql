@@ -13,7 +13,7 @@ begin
   execute 'set role authenticated';
   foreach t in array array['memberships','employees','employee_pay_rates','crews','crew_members','clients',
                            'properties','jobs','time_entries','time_entry_breaks','invoices','expenses',
-                           'invitations','audit_log','activity','services','visits','visit_assignments'] loop
+                           'invitations','audit_log','activity','services','visits','visit_assignments','estimates','estimate_lines','invoice_lines','payments','document_counters'] loop
     n := tests.count(format('select 1 from public.%I where tenant_id = %L', t, p_other));
     perform tests.is(n, 0::bigint, format('%s cannot SELECT other company %s', p_label, t));
     n := tests.affected(format('update public.%I set tenant_id = tenant_id where tenant_id = %L', t, p_other));
@@ -40,7 +40,7 @@ set role authenticated;
 select tests.throws($$insert into public.clients (tenant_id, name) values ('bbbbbbbb-0000-0000-0000-000000000000', 'x')$$, '%row-level security%', 'A owner cannot INSERT client into B');
 select tests.throws($$insert into public.properties (tenant_id, client_id, address_line1) values ('bbbbbbbb-0000-0000-0000-000000000000', 'c1b00000-0000-0000-0000-000000000001', 'x')$$, '%row-level security%', 'A owner cannot INSERT property into B');
 select tests.throws($$insert into public.jobs (tenant_id, title) values ('bbbbbbbb-0000-0000-0000-000000000000', 'x')$$, '%row-level security%', 'A owner cannot INSERT job into B');
-select tests.throws($$insert into public.invoices (tenant_id, total) values ('bbbbbbbb-0000-0000-0000-000000000000', 1)$$, '%row-level security%', 'A owner cannot INSERT invoice into B');
+select tests.throws($$insert into public.invoices (tenant_id, total) values ('bbbbbbbb-0000-0000-0000-000000000000', 1)$$, '%permission denied%', 'A owner cannot INSERT invoice into B');
 select tests.throws($$insert into public.expenses (tenant_id, category, amount) values ('bbbbbbbb-0000-0000-0000-000000000000', 'x', 1)$$, '%row-level security%', 'A owner cannot INSERT expense into B');
 select tests.throws($$insert into public.employees (tenant_id, display_name) values ('bbbbbbbb-0000-0000-0000-000000000000', 'x')$$, '%row-level security%', 'A owner cannot INSERT employee into B');
 select tests.throws($$insert into public.crews (tenant_id, name) values ('bbbbbbbb-0000-0000-0000-000000000000', 'x')$$, '%row-level security%', 'A owner cannot INSERT crew into B');
@@ -50,7 +50,7 @@ select tests.throws($$insert into public.employee_pay_rates (tenant_id, employee
 -- Cross-company references: a row in A pointing at B's records
 select tests.throws($$insert into public.jobs (tenant_id, client_id, title) values ('aaaaaaaa-0000-0000-0000-000000000000', 'c1b00000-0000-0000-0000-000000000001', 'x')$$, '%foreign key%', 'A job cannot reference B client');
 select tests.throws($$insert into public.properties (tenant_id, client_id, address_line1) values ('aaaaaaaa-0000-0000-0000-000000000000', 'c1b00000-0000-0000-0000-000000000001', 'x')$$, '%foreign key%', 'A property cannot reference B client');
-select tests.throws($$insert into public.invoices (tenant_id, client_id, total) values ('aaaaaaaa-0000-0000-0000-000000000000', 'c1b00000-0000-0000-0000-000000000001', 1)$$, '%foreign key%', 'A invoice cannot reference B client');
+select tests.throws($$insert into public.invoices (tenant_id, client_id, total) values ('aaaaaaaa-0000-0000-0000-000000000000', 'c1b00000-0000-0000-0000-000000000001', 1)$$, '%permission denied%', 'A invoice cannot reference B client (invoices only come from billing)');
 select tests.throws($$insert into public.crew_members (tenant_id, crew_id, employee_id) values ('aaaaaaaa-0000-0000-0000-000000000000', 'ca000000-0000-0000-0000-000000000001', 'eb000000-0000-0000-0000-000000000003')$$, '%foreign key%', 'A crew cannot include B employee');
 
 -- Moving a row to another company (even one you also belong to) is blocked
