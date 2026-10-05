@@ -23,6 +23,33 @@ async function invite(formData: FormData) {
   redirect(`/team?invited=${encodeURIComponent(String(token))}`);
 }
 
+async function createCrew(formData: FormData) {
+  "use server";
+  const { company } = await currentCompany();
+  const name = String(formData.get("crew_name") ?? "").trim();
+  if (!name) redirect(`/team?error=${encodeURIComponent("Name the crew, e.g. Crew 1.")}`);
+  const { error } = await (await supabaseServer()).from("crews").insert({ tenant_id: company.tenant_id, name });
+  redirect(error ? `/team?error=${encodeURIComponent(friendlyError(error))}` : "/team");
+}
+
+async function setCrewMembers(formData: FormData) {
+  "use server";
+  const { company } = await currentCompany();
+  const supabase = await supabaseServer();
+  const crewId = String(formData.get("crew_id"));
+  const members = formData.getAll("employee_id").map(String);
+  const lead = String(formData.get("lead_id") ?? "");
+  const { error: delErr } = await supabase.from("crew_members").delete().eq("crew_id", crewId);
+  if (delErr) redirect(`/team?error=${encodeURIComponent(friendlyError(delErr))}`);
+  if (members.length > 0) {
+    const { error } = await supabase.from("crew_members").insert(
+      members.map((employee_id) => ({ tenant_id: company.tenant_id, crew_id: crewId, employee_id, is_lead: employee_id === lead })),
+    );
+    if (error) redirect(`/team?error=${encodeURIComponent(friendlyError(error))}`);
+  }
+  redirect("/team");
+}
+
 export default async function TeamPage({
   searchParams,
 }: {
@@ -33,6 +60,10 @@ export default async function TeamPage({
   const { invited, error } = await searchParams;
   const supabase = await supabaseServer();
 
+  const [{ data: crews }, { data: crewMembers }] = await Promise.all([
+    supabase.from("crews").select("id, name").eq("tenant_id", company.tenant_id).eq("active", true).order("name"),
+    supabase.from("crew_members").select("crew_id, employee_id, is_lead").eq("tenant_id", company.tenant_id),
+  ]);
   const [{ data: employees }, { data: members }, { data: pending }] = await Promise.all([
     supabase.from("employees").select("id, display_name, email, status, user_id").eq("tenant_id", company.tenant_id).order("display_name"),
     supabase.from("memberships").select("user_id, role").eq("tenant_id", company.tenant_id),
@@ -83,6 +114,50 @@ export default async function TeamPage({
           <button className="button" type="submit">
             Create invite
           </button>
+        </form>
+      </section>
+
+      <section aria-labelledby="crews" className={styles.people}>
+        <h2 id="crews">Crews</h2>
+        {(crews ?? []).length === 0 && <p className={styles.meta}>Group people into crews so you can schedule work to them.</p>}
+        {(crews ?? []).map((c) => {
+          const on = new Set((crewMembers ?? []).filter((m) => m.crew_id === c.id).map((m) => m.employee_id as string));
+          const leadId = (crewMembers ?? []).find((m) => m.crew_id === c.id && m.is_lead)?.employee_id as string | undefined;
+          const active = (employees ?? []).filter((e) => e.status === "active");
+          return (
+            <details key={c.id} className={styles.crew}>
+              <summary>
+                <span className={styles.name}>{c.name}</span>
+                <span className={styles.meta}>
+                  {on.size === 0 ? "No one yet" : active.filter((e) => on.has(e.id)).map((e) => e.display_name).join(", ")}
+                </span>
+              </summary>
+              <form action={setCrewMembers} className={styles.crewForm}>
+                <input type="hidden" name="crew_id" value={c.id} />
+                <fieldset className={styles.checks}>
+                  <legend>Who's on this crew</legend>
+                  {active.map((e) => (
+                    <label key={e.id} className={styles.check}>
+                      <input type="checkbox" name="employee_id" value={e.id} defaultChecked={on.has(e.id)} /> {e.display_name}
+                    </label>
+                  ))}
+                </fieldset>
+                <div className="field">
+                  <label htmlFor={`lead-${c.id}`}>Crew lead</label>
+                  <select id={`lead-${c.id}`} name="lead_id" className="select" defaultValue={leadId ?? ""}>
+                    <option value="">None</option>
+                    {active.map((e) => <option key={e.id} value={e.id}>{e.display_name}</option>)}
+                  </select>
+                </div>
+                <button className="button" type="submit">Save crew</button>
+              </form>
+            </details>
+          );
+        })}
+        <form action={createCrew} className={styles.newCrew}>
+          <label htmlFor="crew_name" className={styles.name}>New crew</label>
+          <input id="crew_name" name="crew_name" className="input" placeholder="e.g. Crew 2" maxLength={80} />
+          <button className="button quiet" type="submit">Add crew</button>
         </form>
       </section>
 

@@ -27,3 +27,15 @@
   .row { grid-template-columns: 1fr auto; }
   .meta { grid-column: 1 / -1; grid-row: 2; }
 }
+
+.crew { background: var(--surface); border-radius: var(--radius-panel); }
+.crew summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 160px 1fr; gap: 12px; padding: 14px 16px; }
+.crew summary::-webkit-details-marker { display: none; }
+.crewForm { display: grid; gap: 14px; padding: 0 16px 16px; }
+.crewForm button { justify-self: start; }
+.checks { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.checks legend { font-weight: 600; margin-bottom: 8px; }
+.check { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; }
+.check input { width: 20px; height: 20px; accent-color: var(--turf); }
+.newCrew { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.newCrew .input { flex: 1; min-width: 180px; max-width: 320px; }

@@ -47,6 +47,9 @@ export default async function InvitePage({
             Accept invite
           </button>
         </form>
+        <p className={styles.lede}>
+          On your phone? <a href={`crew://invite/${encodeURIComponent(token)}`}>Open this invite in the Crew app</a>.
+        </p>
       </div>
     </main>
   );

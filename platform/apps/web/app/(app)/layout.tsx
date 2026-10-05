@@ -58,6 +58,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {manager && (
             <>
               <li>
+                <Link href="/schedule">Schedule</Link>
+              </li>
+              <li>
                 <Link href="/time">Time</Link>
               </li>
               <li>

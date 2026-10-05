@@ -1,0 +1,215 @@
+import { useCallback, useEffect, useState } from "react";
+import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Link, useFocusEffect } from "expo-router";
+import { elapsedSince, formatClockTime, formatDuration, friendlyError, type TimeEntry } from "@crew/shared";
+import { supabase } from "../../lib/supabase";
+import { companyToday, useCompany } from "../../lib/company";
+import { flush, pendingActions, pendingClockState, pendingVisitStatus, perform, type QueuedAction } from "../../lib/actionQueue";
+import type { Stop } from "../../lib/stops";
+import { color, font } from "../../lib/theme";
+
+export default function TodayScreen() {
+  const { company, loading: companyLoading, reload: reloadCompany } = useCompany();
+  const [open, setOpen] = useState<TimeEntry | null>(null);
+  const [stops, setStops] = useState<Stop[]>([]);
+  const [queued, setQueued] = useState<QueuedAction[]>([]);
+  const [now, setNow] = useState(() => new Date());
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    const { rejected } = await flush().catch(() => ({ rejected: [] }));
+    if (rejected.length > 0) setMessage(`Something saved on this phone couldn't be recorded: ${friendlyError(rejected[0]!.error)}`);
+    setQueued(await pendingActions());
+    if (!company?.employee_id) return;
+
+    const today = companyToday(company.timezone);
+    const [{ data: entry }, { data: sched, error }] = await Promise.all([
+      supabase
+        .from("time_entries")
+        .select("id, tenant_id, employee_id, clock_in, clock_out")
+        .eq("employee_id", company.employee_id)
+        .is("clock_out", null)
+        .is("voided_at", null)
+        .maybeSingle(),
+      supabase.rpc("schedule", { p_tenant_id: company.tenant_id, p_from: today, p_to: today }),
+    ]);
+    setOpen((entry as TimeEntry | null) ?? null);
+    if (!error) setStops((sched ?? []) as Stop[]);
+  }, [company]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
+
+  useEffect(() => {
+    const tick = setInterval(() => setNow(new Date()), 15_000);
+    const sub = AppState.addEventListener("change", (s) => s === "active" && refresh());
+    return () => {
+      clearInterval(tick);
+      sub.remove();
+    };
+  }, [refresh]);
+
+  // Queued actions count immediately, so offline taps feel instant.
+  const pending = pendingClockState(queued);
+  const onClock = pending ? pending.onClock : open !== null;
+  const since = pending?.onClock ? pending.since : open?.clock_in;
+
+  async function onPunch() {
+    if (!company) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await perform({ kind: onClock ? "out" : "in", tenantId: company.tenant_id });
+      if (result === "queued") setMessage("No signal. Saved on this phone; it will send automatically.");
+    } catch (err) {
+      setMessage(friendlyError(err));
+    } finally {
+      await refresh();
+      setBusy(false);
+    }
+  }
+
+  if (companyLoading) return <SafeAreaView style={styles.safe} />;
+
+  if (!company) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.center}>
+          <Text style={styles.title}>You're not on a team yet</Text>
+          <Text style={styles.lede}>Ask your manager to invite this email, then open the invite link on this phone.</Text>
+          <Pressable onPress={reloadCompany} accessibilityRole="button" style={styles.secondary}>
+            <Text style={styles.secondaryText}>Check again</Text>
+          </Pressable>
+          <Pressable onPress={() => supabase.auth.signOut()} accessibilityRole="button" hitSlop={12}>
+            <Text style={styles.link}>Sign out</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const remaining = stops.filter((s) => (pendingVisitStatus(queued, s.visit_id) ?? s.status) !== "completed" && s.status !== "skipped" && s.status !== "canceled");
+
+  return (
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <ScrollView contentContainerStyle={styles.body} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>
+        <View style={styles.top}>
+          <Text style={styles.company}>{company.name}</Text>
+          <Pressable onPress={() => supabase.auth.signOut()} accessibilityRole="button" hitSlop={12}>
+            <Text style={styles.link}>Sign out</Text>
+          </Pressable>
+        </View>
+
+        <View style={[styles.clock, onClock && styles.clockOn]}>
+          <Text style={[styles.status, onClock && styles.onSoft]}>{onClock ? "On the clock" : "Off the clock"}</Text>
+          <Text style={[styles.elapsed, onClock && styles.elapsedOn]}>
+            {onClock && since ? formatDuration(elapsedSince(since, now)) : "0:00"}
+          </Text>
+          {onClock && since && <Text style={[styles.since, styles.onSoft]}>since {formatClockTime(since, company.timezone)}</Text>}
+        </View>
+
+        {message && <Text style={styles.message}>{message}</Text>}
+        {queued.length > 0 && (
+          <Text style={styles.queued}>{queued.length} {queued.length === 1 ? "update" : "updates"} waiting for signal</Text>
+        )}
+
+        <View style={styles.stopsHead}>
+          <Text style={styles.h2}>Today's stops</Text>
+          {stops.length > 0 && <Text style={styles.count}>{remaining.length} left</Text>}
+        </View>
+        {stops.length === 0 ? (
+          <Text style={styles.lede}>No stops assigned to you today.</Text>
+        ) : (
+          stops.map((s, i) => {
+            const status = pendingVisitStatus(queued, s.visit_id) ?? s.status;
+            return (
+              <Link key={s.visit_id} href={{ pathname: "/visit/[id]", params: { id: s.visit_id } }} asChild>
+                <Pressable accessibilityRole="button" style={({ pressed }) => [styles.stop, pressed && styles.pressed]}>
+                  <Text style={[styles.stopNo, status === "completed" && styles.done]}>{i + 1}</Text>
+                  <View style={styles.stopText}>
+                    <Text style={[styles.stopTitle, status === "completed" && styles.doneText]} numberOfLines={1}>
+                      {s.client_name ?? s.job_title}
+                    </Text>
+                    <Text style={styles.stopSub} numberOfLines={1}>{s.address ?? s.job_title}</Text>
+                  </View>
+                  <Text style={[styles.stopStatus, status === "in_progress" && styles.working]}>
+                    {status === "completed" ? "Done" : status === "in_progress" ? "Working" : status === "skipped" ? "Skipped" : ""}
+                  </Text>
+                </Pressable>
+              </Link>
+            );
+          })
+        )}
+      </ScrollView>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={onClock ? "Clock out" : "Clock in"}
+        disabled={busy}
+        onPress={onPunch}
+        style={({ pressed }) => [styles.punch, onClock ? styles.punchOut : styles.punchIn, (pressed || busy) && styles.pressed]}
+      >
+        <Text style={[styles.punchText, onClock && styles.punchTextOut]}>{onClock ? "Clock out" : "Clock in"}</Text>
+      </Pressable>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: color.daylight },
+  body: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24, gap: 14 },
+  center: { flex: 1, justifyContent: "center", paddingHorizontal: 24, gap: 14 },
+  top: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  company: { fontFamily: font.textBold, fontSize: 18, color: color.ink },
+  title: { fontFamily: font.textBold, fontSize: 26, color: color.ink },
+  lede: { fontFamily: font.text, fontSize: 17, color: color.inkSoft },
+  link: { fontFamily: font.textMedium, fontSize: 16, color: color.turf },
+
+  clock: { borderRadius: 18, padding: 20, backgroundColor: color.surface, borderWidth: 1, borderColor: color.line },
+  clockOn: { backgroundColor: color.ink, borderColor: color.ink },
+  status: { fontFamily: font.textMedium, fontSize: 18, color: color.inkSoft },
+  elapsed: { fontFamily: font.figure, fontSize: 84, lineHeight: 90, color: color.inkSoft, fontVariant: ["tabular-nums"] },
+  elapsedOn: { color: color.hivis },
+  since: { fontFamily: font.text, fontSize: 17 },
+  onSoft: { color: "#B9C6B6" },
+  message: { fontFamily: font.textMedium, fontSize: 16, color: color.ink },
+  queued: { fontFamily: font.text, fontSize: 15, color: color.inkSoft },
+
+  stopsHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginTop: 8 },
+  h2: { fontFamily: font.textBold, fontSize: 22, color: color.ink },
+  count: { fontFamily: font.textMedium, fontSize: 16, color: color.inkSoft },
+  stop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    minHeight: 72,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: color.line,
+  },
+  stopNo: { fontFamily: font.figure, fontSize: 28, color: color.turf, width: 28, textAlign: "center" },
+  done: { color: color.inkSoft },
+  stopText: { flex: 1, gap: 2 },
+  stopTitle: { fontFamily: font.textBold, fontSize: 18, color: color.ink },
+  doneText: { color: color.inkSoft, textDecorationLine: "line-through" },
+  stopSub: { fontFamily: font.text, fontSize: 15, color: color.inkSoft },
+  stopStatus: { fontFamily: font.textBold, fontSize: 14, color: color.inkSoft },
+  working: { color: color.ink, backgroundColor: color.hivis, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, overflow: "hidden" },
+
+  secondary: { minHeight: 52, borderRadius: 10, borderWidth: 1.5, borderColor: color.line, alignItems: "center", justifyContent: "center" },
+  secondaryText: { fontFamily: font.textBold, fontSize: 17, color: color.ink },
+
+  punch: { marginHorizontal: 16, marginVertical: 12, minHeight: 88, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  punchIn: { backgroundColor: color.turf },
+  punchOut: { backgroundColor: color.hivis },
+  pressed: { opacity: 0.85 },
+  punchText: { fontFamily: font.textBold, fontSize: 26, color: "#fff" },
+  punchTextOut: { color: color.ink },
+});
