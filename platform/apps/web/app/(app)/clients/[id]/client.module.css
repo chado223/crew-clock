@@ -48,3 +48,7 @@
   .noteForm { grid-template-columns: 1fr; }
   .noteForm button { grid-column: 1; }
 }
+
+.inlineForm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.inlineForm .input { flex: 1; min-width: 180px; }
+.textButton { background: none; border: 0; padding: 0; color: var(--error); font: 500 0.9rem var(--font-text); cursor: pointer; }
