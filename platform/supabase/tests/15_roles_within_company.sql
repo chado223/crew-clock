@@ -31,7 +31,7 @@ reset role;
 -- Admin: runs operations, cannot escalate or touch owners
 select tests.login('a0000000-0000-0000-0000-000000000002');
 set role authenticated;
-select tests.is(tests.count('select 1 from public.invoices'), 1::bigint, 'Admin sees invoices');
+select tests.is(tests.count('select 1 from public.invoices'), 2::bigint, 'Admin sees the company''s invoices');
 select tests.is(tests.count('select 1 from public.time_entries'), 2::bigint, 'Admin sees all company time');
 select tests.throws($$select public.set_member_role('aaaaaaaa-0000-0000-0000-000000000000', auth.uid(), 'owner')$$, '%only_owner%', 'Admin cannot promote self to owner');
 select tests.throws($$select public.invite_member('aaaaaaaa-0000-0000-0000-000000000000', 'boss@x.test', 'owner')$$, '%only_owner%', 'Admin cannot invite an owner');

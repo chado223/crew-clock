@@ -169,6 +169,8 @@ export default async function ClientPage({
             ))}
           </select>
           <button className="button quiet" type="submit">Update status</button>
+          <Link href="/estimates" className="button quiet">New estimate</Link>
+          <Link href={`/invoices?client=${client.id}`} className="button quiet">Bill completed work</Link>
         </form>
       </header>
 

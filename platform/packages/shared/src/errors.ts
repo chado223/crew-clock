@@ -37,6 +37,18 @@ const MESSAGES: Record<string, string> = {
   job_not_found: "That job doesn't exist.",
   crew_not_found: "That crew doesn't exist.",
   employee_not_found: "That employee doesn't exist.",
+  document_not_draft: "This is no longer a draft, so its lines can't change.",
+  estimate_empty: "Add at least one line first.",
+  estimate_not_approved: "Record the customer's approval first.",
+  estimate_converted: "This estimate already became jobs.",
+  property_required: "Pick the property this work is for.",
+  invalid_status: "That status isn't allowed here.",
+  nothing_to_invoice: "No completed, unbilled visits for this customer in that period.",
+  invalid_tax_rate: "Tax rate must be between 0% and 100%.",
+  invoice_empty: "This invoice has no amount.",
+  invoice_not_open: "Payments can only be recorded on sent invoices.",
+  invalid_amount: "Enter an amount greater than zero.",
+  overpayment: "That's more than the balance due.",
   week_start_mismatch: "That date isn't the first day of your work week.",
 };
 

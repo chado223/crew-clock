@@ -88,4 +88,24 @@ insert into public.visit_assignments (tenant_id, visit_id, employee_id) values
   ('aaaaaaaa-0000-0000-0000-000000000000', '7a500000-0000-0000-0000-000000000001', 'ea000000-0000-0000-0000-000000000004'),
   ('bbbbbbbb-0000-0000-0000-000000000000', '7b500000-0000-0000-0000-000000000001', 'eb000000-0000-0000-0000-000000000003');
 
+-- Money: a draft estimate and a paid-in-part invoice per company
+insert into public.estimates (id, tenant_id, number, client_id, property_id) values
+  ('e5a00000-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000000', 'EST-9001', 'c1a00000-0000-0000-0000-000000000001', 'd1a00000-0000-0000-0000-000000000001'),
+  ('e5b00000-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000000', 'EST-9001', 'c1b00000-0000-0000-0000-000000000001', 'd1b00000-0000-0000-0000-000000000001');
+insert into public.estimate_lines (tenant_id, estimate_id, description, unit_price) values
+  ('aaaaaaaa-0000-0000-0000-000000000000', 'e5a00000-0000-0000-0000-000000000001', 'Aeration', 120),
+  ('bbbbbbbb-0000-0000-0000-000000000000', 'e5b00000-0000-0000-0000-000000000001', 'Aeration', 130);
+insert into public.invoices (id, tenant_id, client_id, number, status, total) values
+  ('1a000000-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000000', 'c1a00000-0000-0000-0000-000000000001', 'INV-9001', 'draft', 0),
+  ('1b000000-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000000', 'c1b00000-0000-0000-0000-000000000001', 'INV-9001', 'draft', 0);
+insert into public.invoice_lines (tenant_id, invoice_id, description, unit_price) values
+  ('aaaaaaaa-0000-0000-0000-000000000000', '1a000000-0000-0000-0000-000000000001', 'Mow', 45),
+  ('bbbbbbbb-0000-0000-0000-000000000000', '1b000000-0000-0000-0000-000000000001', 'Mow', 50);
+update public.invoices set status = 'sent' where id in ('1a000000-0000-0000-0000-000000000001', '1b000000-0000-0000-0000-000000000001');
+insert into public.payments (tenant_id, invoice_id, amount, method, received_on) values
+  ('aaaaaaaa-0000-0000-0000-000000000000', '1a000000-0000-0000-0000-000000000001', 20, 'cash', '2026-09-30'),
+  ('bbbbbbbb-0000-0000-0000-000000000000', '1b000000-0000-0000-0000-000000000001', 20, 'cash', '2026-09-30');
+insert into public.document_counters (tenant_id, kind) values
+  ('aaaaaaaa-0000-0000-0000-000000000000', 'invoice'), ('bbbbbbbb-0000-0000-0000-000000000000', 'invoice');
+
 truncate public.audit_log;   -- tests start with a clean audit trail

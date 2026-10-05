@@ -86,3 +86,8 @@ a { color: var(--turf); }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+@media print {
+  .noPrint, nav[aria-label="Main"] { display: none !important; }
+  body { background: #fff; }
+}

@@ -1,0 +1,47 @@
+/* Shared by estimates and invoices. */
+.page { display: grid; gap: 24px; }
+.header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.sub { color: var(--ink-soft); margin-top: 4px; }
+.empty { color: var(--ink-soft); }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab { padding: 8px 14px; border-radius: 999px; color: var(--ink); text-decoration: none; font-weight: 500; }
+.tab[aria-current="page"] { background: var(--ink); color: #f1f5ee; }
+
+.list { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius-panel); }
+.list li { border-bottom: 1px solid var(--line); }
+.list li:last-child { border-bottom: 0; }
+.row { display: grid; grid-template-columns: 110px 1fr auto auto; gap: 14px; align-items: center; padding: 14px 16px; color: inherit; text-decoration: none; }
+.row:hover { background: #f8faf6; }
+.num { font-family: var(--font-figure); font-size: 1.15rem; text-align: right; }
+.status { font-size: 0.85rem; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: #eef1ec; text-transform: capitalize; }
+.status_paid, .status_approved, .status_converted { background: #e1eedd; color: var(--turf); }
+.status_partial, .status_sent { background: #fbf6d8; }
+.status_overdue, .status_declined { background: #f6dfd8; color: var(--error); }
+
+.panel { display: grid; gap: 14px; padding: 20px; background: var(--surface); border-radius: var(--radius-panel); }
+.form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; align-items: end; }
+.form > button { justify-self: start; }
+
+/* The document itself: reads like the paper version, prints cleanly. */
+.doc { background: var(--surface); border-radius: var(--radius-panel); padding: clamp(20px, 4vw, 40px); display: grid; gap: 20px; }
+.docHead { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.docNumber { font-family: var(--font-figure); font-size: 2rem; font-weight: 600; }
+.lines { width: 100%; border-collapse: collapse; }
+.lines th, .lines td { padding: 10px 0; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.lines th { font-size: 0.9rem; color: var(--ink-soft); font-weight: 600; }
+.lines .right { text-align: right; }
+.totals { margin-left: auto; display: grid; grid-template-columns: auto auto; gap: 6px 28px; }
+.totals dt { color: var(--ink-soft); }
+.totals dd { margin: 0; text-align: right; font-family: var(--font-figure); font-size: 1.15rem; }
+.grand { font-weight: 600; color: var(--ink) !important; font-size: 1.4rem !important; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.inline { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.remove { background: none; border: 0; color: var(--error); font: 500 0.9rem var(--font-text); cursor: pointer; padding: 0; }
+
+@media print {
+  .noPrint { display: none !important; }
+  .doc { padding: 0; }
+}
+@media (max-width: 760px) {
+  .row { grid-template-columns: 1fr auto; }
+}
