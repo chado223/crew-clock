@@ -56,9 +56,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Link href="/">Today</Link>
           </li>
           {manager && (
-            <li>
-              <Link href="/team">Team</Link>
-            </li>
+            <>
+              <li>
+                <Link href="/time">Time</Link>
+              </li>
+              <li>
+                <Link href="/clients">Customers</Link>
+              </li>
+              <li>
+                <Link href="/team">Team</Link>
+              </li>
+            </>
           )}
         </ul>
         <form action={signOut} className={styles.signOut}>

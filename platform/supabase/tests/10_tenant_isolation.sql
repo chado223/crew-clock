@@ -44,7 +44,7 @@ select tests.throws($$insert into public.invoices (tenant_id, total) values ('bb
 select tests.throws($$insert into public.expenses (tenant_id, category, amount) values ('bbbbbbbb-0000-0000-0000-000000000000', 'x', 1)$$, '%row-level security%', 'A owner cannot INSERT expense into B');
 select tests.throws($$insert into public.employees (tenant_id, display_name) values ('bbbbbbbb-0000-0000-0000-000000000000', 'x')$$, '%row-level security%', 'A owner cannot INSERT employee into B');
 select tests.throws($$insert into public.crews (tenant_id, name) values ('bbbbbbbb-0000-0000-0000-000000000000', 'x')$$, '%row-level security%', 'A owner cannot INSERT crew into B');
-select tests.throws($$insert into public.activity (tenant_id, kind, summary) values ('bbbbbbbb-0000-0000-0000-000000000000', 'note', 'x')$$, '%row-level security%', 'A owner cannot INSERT activity into B');
+select tests.throws($$insert into public.activity (tenant_id, kind, summary) values ('bbbbbbbb-0000-0000-0000-000000000000', 'note', 'x')$$, '%permission denied%', 'A owner cannot INSERT activity into B');
 select tests.throws($$insert into public.employee_pay_rates (tenant_id, employee_id, hourly_rate, effective_from) values ('bbbbbbbb-0000-0000-0000-000000000000', 'eb000000-0000-0000-0000-000000000003', 1, '2026-02-01')$$, '%row-level security%', 'A owner cannot INSERT pay rate into B');
 
 -- Cross-company references: a row in A pointing at B's records

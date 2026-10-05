@@ -27,6 +27,9 @@ const MESSAGES: Record<string, string> = {
   invitation_expired: "This invite link has expired. Ask for a new one.",
   invitation_already_used: "This invite has already been used.",
   invitation_email_mismatch: "This invite was sent to a different email. Sign in with that email.",
+  invalid_activity_kind: "Pick what kind of entry this is.",
+  summary_required: "Write a short note.",
+  not_found: "That record doesn't exist or was removed.",
   week_start_mismatch: "That date isn't the first day of your work week.",
 };
 
