@@ -6,30 +6,30 @@ P0 = do now · P1 = Phase 1 blocker · P2 = Phase 2 · P3 = later. "Owner" is wh
 
 | ID | Issue | Owner | Status |
 |---|---|---|---|
-| P0-1 | Confirm `SECRET_KEY` is set on Render to a long random value (if not, admin sessions are forgeable) | Chad | Open |
+| P0-1 | Confirm `SECRET_KEY` is set on Render to a long random value (if not, admin sessions are forgeable) | Claude (Render connector) | Blocked on connector |
 | P0-2 | Lock `/gs-test`, `/gs-debug`, `/rebuild-totals` behind admin login; POST-only for writes | Claude | **Done in hotfix** |
 | P0-3 | App refuses to start with default/missing `SECRET_KEY` | Claude | **Done in hotfix** |
 | P0-4 | Rate-limit `/login` (Flask-Limiter already installed); constant-time password compare | Claude | **Done in hotfix** |
 | P0-5 | Fix open redirect in `?next=` | Claude | **Done in hotfix** |
 | P0-6 | `/health` no longer returns exception text | Claude | **Done in hotfix** |
-| P0-7 | Check Render for a persistent disk + `DB_PATH`; if a disk exists, take `sqlite3 clock.db .dump` backup | Chad | Open |
-| P0-8 | Export every Google Sheet tab to CSV (File → Download) as backup + migration source | Chad | Open |
-| P0-9 | Run `scripts/supabase_inspect.sql`, share output for RLS review | Chad | Open |
-| P0-10 | Link GitHub to Claude so work lands as PRs instead of downloads | Chad | Open |
+| P0-7 | Check Render for a persistent disk + `DB_PATH`; if a disk exists, take `sqlite3 clock.db .dump` backup | Claude (Render connector) | Blocked on connector |
+| P0-8 | Back up every Google Sheet tab before migration (migration source) | Claude (Google Drive connector, needed by Phase 2) | Open |
+| P0-9 | Review live Supabase schema/RLS | Claude (Supabase connector) | Blocked on connector |
+| P0-10 | Connect GitHub so work lands as PRs and CI runs | Chad (one-time connection) | Open |
 
 ## P1: Foundation
 
-| ID | Issue |
-|---|---|
-| P1-1 | Monorepo scaffold (`apps/web`, `apps/mobile`, `packages/shared`, `supabase/`), CI |
-| P1-2 | Baseline migration from existing Supabase schema |
-| P1-3 | Review/fix RLS per audit §5.4 (recursion, UPDATE `WITH CHECK`, crew vs financial tables, membership escalation, `profiles` RLS, function grants) |
-| P1-4 | **Tenant isolation test suite as CI release blocker** |
-| P1-5 | Schema: `employees`, `crews`, `crew_members`, `properties`, `tenant_settings.timezone`, `audit_log`, `activity` |
-| P1-6 | Audit-log triggers on time entries, memberships, invoices, payments, clients, jobs |
-| P1-7 | Auth: OTP/magic link, invites, org switcher |
-| P1-8 | Staging Supabase project (needs Chad's OK; handoff says no new projects without instruction) |
-| P1-9 | Sentry + structured logging |
+| ID | Issue | Status |
+|---|---|---|
+| P1-1 | Monorepo scaffold (`apps/web`, `apps/mobile`, `packages/shared`, `supabase/`), CI | Workflow for DB tests added; app scaffolds next |
+| P1-2 | Baseline migration from existing Supabase schema | Draft from handoff; verify against live DB |
+| P1-3 | Review/fix RLS per audit §5.4 (recursion, UPDATE `WITH CHECK`, crew vs financial tables, membership escalation, `profiles` RLS, function grants) | Done locally (all policies replaced) |
+| P1-4 | **Tenant isolation test suite as CI release blocker** | Done: `platform/supabase/tests`, CI workflow |
+| P1-5 | Schema: `employees`, `crews`, `crew_members`, `properties`, `tenant_settings.timezone`, `audit_log`, `activity` | Done locally |
+| P1-6 | Audit-log triggers on time entries, memberships, invoices, payments, clients, jobs | Done locally |
+| P1-7 | Auth: OTP/magic link, invites, org switcher | DB side done (create company, invites, roles); UI next |
+| P1-8 | Staging Supabase project (needs Chad's OK; handoff says no new projects without instruction) | Needs Supabase connector + cost OK |
+| P1-9 | Sentry + structured logging | Open |
 
 ## P2: Time + cutover
 
