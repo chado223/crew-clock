@@ -49,6 +49,12 @@ const MESSAGES: Record<string, string> = {
   invoice_not_open: "Payments can only be recorded on sent invoices.",
   invalid_amount: "Enter an amount greater than zero.",
   overpayment: "That's more than the balance due.",
+  estimate_not_open: "This estimate has already been answered.",
+  estimate_expired: "This estimate has expired. Ask for an updated one.",
+  details_required: "Tell us a little about what you need.",
+  too_many_requests: "You've sent several requests already. We'll be in touch soon.",
+  invalid_phone: "Enter a phone number using digits.",
+  note_too_long: "Keep the note under 2,000 characters.",
   week_start_mismatch: "That date isn't the first day of your work week.",
 };
 
