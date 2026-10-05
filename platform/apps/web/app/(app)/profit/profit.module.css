@@ -1,0 +1,25 @@
+.page { display: grid; gap: 22px; }
+.header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.range { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+
+/* The answer to "is my company making money?" as a sentence, not a tile grid. */
+.headline { font-size: 1.6rem; line-height: 1.35; max-width: 34ch; font-weight: 500; }
+.headline :global(.figure) { font-size: 2.1rem; font-weight: 600; color: var(--turf); }
+.method { color: var(--ink-soft); max-width: 70ch; }
+
+.h2 { margin-bottom: 12px; }
+.table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: var(--radius-panel); overflow: hidden; }
+.table th, .table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.table th { font-weight: 600; font-size: 0.9rem; color: var(--ink-soft); }
+.table tr:last-child td { border-bottom: 0; }
+.num { text-align: right !important; white-space: nowrap; }
+.table td.num { font-size: 1.1rem; }
+.sub { display: block; color: var(--ink-soft); font-size: 0.9rem; }
+.p { color: var(--ink-soft); font-size: 0.9rem; margin-left: 4px; }
+.low td { background: #fbf1ee; }
+
+@media (max-width: 760px) {
+  .headline { font-size: 1.3rem; }
+  .table th, .table td { padding: 10px; }
+  .table { display: block; overflow-x: auto; }
+}

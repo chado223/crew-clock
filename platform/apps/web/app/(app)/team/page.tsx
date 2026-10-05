@@ -50,6 +50,23 @@ async function setCrewMembers(formData: FormData) {
   redirect("/team");
 }
 
+async function setPayRate(formData: FormData) {
+  "use server";
+  const { company } = await currentCompany();
+  const rate = Number(formData.get("hourly_rate"));
+  const from = String(formData.get("effective_from") ?? "");
+  if (!Number.isFinite(rate) || rate < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+    redirect(`/team?error=${encodeURIComponent("Enter an hourly rate and the date it starts.")}`);
+  }
+  const { error } = await (await supabaseServer()).from("employee_pay_rates").insert({
+    tenant_id: company.tenant_id,
+    employee_id: String(formData.get("employee_id")),
+    hourly_rate: rate,
+    effective_from: from,
+  });
+  redirect(error ? `/team?error=${encodeURIComponent(error.code === "23505" ? "There's already a rate starting that day." : friendlyError(error))}` : "/team");
+}
+
 export default async function TeamPage({
   searchParams,
 }: {
@@ -75,6 +92,14 @@ export default async function TeamPage({
       .is("revoked_at", null)
       .gt("expires_at", new Date().toISOString()),
   ]);
+  const { data: rates } = await supabase
+    .from("employee_pay_rates")
+    .select("employee_id, hourly_rate, effective_from")
+    .eq("tenant_id", company.tenant_id)
+    .order("effective_from", { ascending: false });
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: company.timezone }).format(new Date());
+  const currentRate = new Map<string, number>();
+  for (const r of rates ?? []) if (r.effective_from <= today && !currentRate.has(r.employee_id)) currentRate.set(r.employee_id, Number(r.hourly_rate));
   const roleOf = new Map((members ?? []).map((m) => [m.user_id as string, m.role as string]));
 
   const host = (await headers()).get("host");
@@ -165,12 +190,33 @@ export default async function TeamPage({
         <h2 id="people">People</h2>
         <ul className={styles.list}>
           {(employees ?? []).map((e) => (
-            <li key={e.id} className={styles.row}>
-              <span className={styles.name}>{e.display_name}</span>
-              <span className={styles.meta}>{e.email ?? "No email"}</span>
-              <span className={styles.role}>
-                {e.status === "inactive" ? "Inactive" : e.user_id ? (roleOf.get(e.user_id) ?? "Member") : "Not signed up"}
-              </span>
+            <li key={e.id}>
+              <details className={styles.person}>
+                <summary className={styles.row}>
+                  <span className={styles.name}>{e.display_name}</span>
+                  <span className={styles.meta}>
+                    {e.email ?? "No email"}
+                    {currentRate.has(e.id) ? `, $${currentRate.get(e.id)!.toFixed(2)}/h` : ", no pay rate"}
+                  </span>
+                  <span className={styles.role}>
+                    {e.status === "inactive" ? "Inactive" : e.user_id ? (roleOf.get(e.user_id) ?? "Member") : "Not signed up"}
+                  </span>
+                </summary>
+                <form action={setPayRate} className={styles.rateForm}>
+                  <input type="hidden" name="employee_id" value={e.id} />
+                  <div className="field">
+                    <label htmlFor={`rate-${e.id}`}>Hourly pay ($)</label>
+                    <input id={`rate-${e.id}`} name="hourly_rate" type="number" min={0} step="0.01" required className="input"
+                      defaultValue={currentRate.get(e.id)?.toFixed(2)} />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`from-${e.id}`}>Starting</label>
+                    <input id={`from-${e.id}`} name="effective_from" type="date" required className="input" defaultValue={today} />
+                  </div>
+                  <button className="button" type="submit">Save pay rate</button>
+                  <p className={`hint ${styles.rateHint}`}>Earlier pay stays on earlier work, so past job costs don't change.</p>
+                </form>
+              </details>
             </li>
           ))}
         </ul>

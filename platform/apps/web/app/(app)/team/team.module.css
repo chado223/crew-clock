@@ -39,3 +39,11 @@
 .check input { width: 20px; height: 20px; accent-color: var(--turf); }
 .newCrew { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .newCrew .input { flex: 1; min-width: 180px; max-width: 320px; }
+
+.person summary { list-style: none; cursor: pointer; }
+.person summary::-webkit-details-marker { display: none; }
+.list > li { border-bottom: 1px solid var(--line); }
+.list > li:last-child { border-bottom: 0; }
+.list > li .row { border-bottom: 0; }
+.rateForm { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; padding: 0 16px 16px; }
+.rateHint { flex-basis: 100%; }
