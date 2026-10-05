@@ -1,6 +1,9 @@
 # App.py
 import os
+import hmac
+import secrets
 import sqlite3
+import time
 from datetime import datetime
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -22,7 +25,13 @@ app = Flask(__name__)
 # ------------------------------------------------------------------
 DB_PATH = os.getenv("DB_PATH", "clock.db")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()
-app.secret_key = os.getenv("SECRET_KEY", "dev-insecure").encode()
+_secret = os.getenv("SECRET_KEY", "").strip()
+if not _secret or _secret in {"dev-insecure", "change-me"}:
+    # Never run with a guessable key. A random key keeps the app up but logs
+    # admins out on each restart, so set SECRET_KEY on Render.
+    print("WARNING: SECRET_KEY not set; using a random key. Set SECRET_KEY in Render env vars.")
+    _secret = secrets.token_hex(32)
+app.secret_key = _secret.encode()
 
 try:
     TZ = ZoneInfo(os.getenv("TZ", "America/New_York"))
@@ -252,6 +261,40 @@ def update_weekly_totals_for_week(week_title: str):
         return False, f"{type(e).__name__}: {str(e)}"
 
 # ------------------------------------------------------------------
+# Auth helpers
+# ------------------------------------------------------------------
+def require_login(f):
+    def wrapper(*args, **kwargs):
+        if not session.get("admin"):
+            return redirect(url_for("login", next=flask_request.path))
+        return f(*args, **kwargs)
+    wrapper.__name__ = f.__name__
+    return wrapper
+
+def _safe_next(target):
+    """Only allow redirects to paths on this site (blocks open redirect)."""
+    if target and target.startswith("/") and not target.startswith("//") and "\\" not in target:
+        return target
+    return None
+
+def _client_ip():
+    # Render appends the real client IP as the LAST X-Forwarded-For entry;
+    # earlier entries can be forged by the client.
+    xff = flask_request.headers.get("X-Forwarded-For", "")
+    return xff.split(",")[-1].strip() if xff else (flask_request.remote_addr or "?")
+
+LOGIN_MAX_FAILS = 5
+LOGIN_WINDOW_SEC = 15 * 60
+_login_fails = defaultdict(deque)  # ip -> timestamps of recent failures (per worker)
+
+def _login_blocked(ip, now=None):
+    now = now or time.time()
+    q = _login_fails[ip]
+    while q and now - q[0] > LOGIN_WINDOW_SEC:
+        q.popleft()
+    return len(q) >= LOGIN_MAX_FAILS
+
+# ------------------------------------------------------------------
 # Public routes (unchanged)
 # ------------------------------------------------------------------
 @app.route("/", methods=["GET"])
@@ -303,14 +346,16 @@ def health():
     try:
         _ = get_recent_entries(1)
         return {"ok": True}, 200
-    except Exception as e:
-        return {"ok": False, "error": str(e)}, 500
+    except Exception:
+        traceback.print_exc()
+        return {"ok": False}, 500
 
 @app.route("/healthz")
 def healthz():
     return health()
 
 @app.route("/gs-test", methods=["GET"])
+@require_login
 def gs_test():
     now_dt = datetime.now(TZ)
     date_str = now_dt.strftime("%Y-%m-%d")
@@ -322,6 +367,7 @@ def gs_test():
         return {"ok": False, "error": err}, 500
 
 @app.route("/gs-debug", methods=["GET"])
+@require_login
 def gs_debug():
     out = {}
     try:
@@ -353,6 +399,7 @@ def gs_debug():
         return {"ok": False, "where": type(e).__name__, "error": str(e)}, 500
 
 @app.route("/rebuild-totals", methods=["POST", "GET"])
+@require_login
 def rebuild_totals():
     try:
         q = flask_request.args.get("week", "").strip()
@@ -371,22 +418,21 @@ def rebuild_totals():
 # ------------------------------------------------------------------
 # Auth + Admin
 # ------------------------------------------------------------------
-def require_login(f):
-    def wrapper(*args, **kwargs):
-        if not session.get("admin"):
-            return redirect(url_for("login", next=flask_request.path))
-        return f(*args, **kwargs)
-    wrapper.__name__ = f.__name__
-    return wrapper
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if flask_request.method == "POST":
+        ip = _client_ip()
+        if _login_blocked(ip):
+            flash("Too many attempts. Try again in 15 minutes.", "err")
+            return render_template("login.html"), 429
         pwd = flask_request.form.get("password", "")
-        if ADMIN_PASSWORD and pwd == ADMIN_PASSWORD:
+        if ADMIN_PASSWORD and hmac.compare_digest(pwd.encode(), ADMIN_PASSWORD.encode()):
+            _login_fails.pop(ip, None)
+            session.clear()
             session["admin"] = True
             flash("Logged in.", "ok")
-            return redirect(flask_request.args.get("next") or url_for("admin"))
+            return redirect(_safe_next(flask_request.args.get("next")) or url_for("admin"))
+        _login_fails[ip].append(time.time())
         flash("Bad password.", "err")
     return render_template("login.html")
 
@@ -463,4 +509,4 @@ def admin():
 # Run
 # ------------------------------------------------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
