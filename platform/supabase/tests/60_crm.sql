@@ -5,7 +5,7 @@ set role authenticated;
 select tests.lives($$insert into public.clients (id, tenant_id, name, kind, status, lead_source, tags)
   values ('c1a00000-0000-0000-0000-0000000000aa', 'aaaaaaaa-0000-0000-0000-000000000000', 'Maple Ridge HOA', 'commercial', 'lead', 'referral', '{hoa,mowing}')$$,
   'Admin adds a lead with tags and source');
-select tests.is((select kind from public.activity where client_id = 'c1a00000-0000-0000-0000-0000000000aa' order by occurred_at limit 1), 'lead_created',
+select tests.is((select kind from public.activity where client_id = 'c1a00000-0000-0000-0000-0000000000aa' order by occurred_at, seq limit 1), 'lead_created',
   'Adding a lead writes a timeline entry');
 select tests.lives($$update public.clients set status = 'active' where id = 'c1a00000-0000-0000-0000-0000000000aa'$$, 'Admin converts lead to customer');
 select tests.is((select data ->> 'to' from public.activity where client_id = 'c1a00000-0000-0000-0000-0000000000aa' and kind = 'status_changed'), 'active',
@@ -39,3 +39,7 @@ select tests.throws($$select public.add_client_note('c1a00000-0000-0000-0000-000
 select tests.is(tests.count($$select 1 from public.clients where id = 'c1a00000-0000-0000-0000-0000000000aa'$$), 0::bigint, 'Other company cannot see the lead');
 select tests.is(tests.count($$select 1 from public.activity where client_id = 'c1a00000-0000-0000-0000-0000000000aa'$$), 0::bigint, 'Other company cannot see the timeline');
 reset role;
+
+-- Order survives a single transaction (approve + convert happen together)
+select tests.is((select string_agg(kind, ',' order by occurred_at, seq) from public.activity where client_id = 'c1a00000-0000-0000-0000-0000000000aa'),
+  'lead_created,status_changed,property_added,call', 'History keeps the real order of events');

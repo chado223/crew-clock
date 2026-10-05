@@ -28,7 +28,7 @@ select tests.ok((select count(*) from public.visits v join public.jobs j on j.id
   'Recurring job is already on the schedule');
 select tests.is((select status from public.estimates where id = :'est'), 'converted', 'Estimate marked converted');
 select tests.throws(format($$select public.convert_estimate(%L, '2026-10-06')$$, :'est'), '%estimate_not_approved%', 'Cannot convert twice');
-select tests.is((select string_agg(kind, ',' order by occurred_at, kind) from public.activity where data ->> 'estimate_id' = :'est'),
+select tests.is((select string_agg(kind, ',' order by occurred_at, seq) from public.activity where data ->> 'estimate_id' = :'est'),
   'estimate_sent,estimate_approved,estimate_converted', 'Customer history shows sent, approved, converted');
 reset role;
 
