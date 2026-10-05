@@ -13,16 +13,18 @@ Phases follow the handoff, with the CRM requirement folded in where its data is 
 - [x] Roadmap + prioritized issues
 - [x] Read-only Supabase inspection script
 - [x] Security hotfix for the live Flask app (branch `phase-0-audit`)
-- [ ] **Chad:** set `SECRET_KEY` on Render (if unset), deploy hotfix
-- [ ] **Chad:** confirm Render disk / `DB_PATH`, export Google Sheet tabs to CSV
-- [ ] **Chad:** run `scripts/supabase_inspect.sql`, share output
-- [ ] **Chad:** approve recommended architecture (audit §7)
+- [ ] Set `SECRET_KEY` on Render if unset, deploy hotfix (Claude via Render connector, with Chad's OK: production deploy)
+- [ ] Confirm Render disk / `DB_PATH` (Claude, via Render connector); back up SQLite and Google Sheet before migration
+- [ ] Review live Supabase schema/RLS (Claude, via Supabase connector; replaces the manual script)
+- [x] Architecture approved by Chad 2026-10-05 (ADR 0001)
 
 **Done when:** hotfix is live, backups exist (SQLite dump if a disk exists, plus Sheet CSV export), Supabase reviewed, architecture approved.
 
 ---
 
 ## Phase 1: Foundation
+
+**Progress (2026-10-05, branch `phase-1-foundation`):** database foundation built and tested locally. Migrations: baseline, foundation (employees, pay rates, crews, properties, invitations, audit log, CRM activity, tenant-safe foreign keys, per-operation RLS), time clock (punch/break/correction functions, `timesheet`/`weekly_hours`), onboarding (create company, invites, roles), privileges. 779 checks pass across upgrade and fresh scenarios; mutation testing confirmed the suite fails when security rules are broken. **Not yet applied to Supabase**: waiting on the Supabase connection to diff against the live schema and set up staging. Web/mobile scaffolds wait on GitHub (CI builds, since this workspace can't install npm packages).
 
 Monorepo scaffold: `apps/web` (Next.js), `apps/mobile` (Expo), `packages/shared`, `supabase/`.
 
