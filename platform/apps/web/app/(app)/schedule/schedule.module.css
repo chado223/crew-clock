@@ -1,0 +1,47 @@
+.page { display: grid; gap: 20px; }
+.header { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+.tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.empty { color: var(--ink-soft); }
+
+/* Rows = crews, columns = days. Horizontal scroll on small screens. */
+.board {
+  overflow-x: auto;
+  background: var(--surface);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--line);
+}
+.row { display: grid; grid-template-columns: 140px repeat(7, minmax(150px, 1fr)); min-width: 1190px; }
+.row + .row { border-top: 1px solid var(--line); }
+.corner, .dayHead { padding: 10px 12px; font-weight: 600; font-size: 0.9rem; color: var(--ink-soft); }
+.dayHead { border-left: 1px solid var(--line); }
+.today { color: var(--ink); background: #eef3ea; }
+.crewName { padding: 12px; font-weight: 600; background: #fafbf8; }
+.cell { padding: 8px; border-left: 1px solid var(--line); display: grid; gap: 6px; align-content: start; min-height: 96px; }
+.todayCell { background: #f7faf4; }
+.load { font-size: 0.85rem; color: var(--ink-soft); text-align: right; }
+
+.card {
+  border-radius: 8px;
+  background: #f1f5ee;
+  border-left: 4px solid var(--turf);
+  font-size: 0.92rem;
+}
+.card summary { list-style: none; cursor: pointer; padding: 8px 10px; display: grid; gap: 1px; }
+.card summary::-webkit-details-marker { display: none; }
+.title { font-weight: 600; }
+.client { color: var(--ink-soft); }
+.badge { justify-self: start; margin-top: 4px; font-size: 0.78rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: #fff; }
+
+.in_progress { border-left-color: var(--hivis); background: #f8fbe1; }
+.completed { border-left-color: var(--ink-soft); background: #f3f4f2; }
+.completed .title { color: var(--ink-soft); }
+.skipped, .canceled { border-left-color: var(--line); background: #f6f6f4; }
+.skipped .title, .canceled .title { text-decoration: line-through; color: var(--ink-soft); }
+
+.cardBody { display: grid; gap: 8px; padding: 0 10px 10px; }
+.address { font-weight: 500; }
+.small { font-size: 0.85rem; color: var(--ink-soft); }
+.cardForm { display: grid; gap: 4px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.cardForm label { font-size: 0.82rem; font-weight: 600; }
+.cardForm .input, .cardForm .select { min-height: 40px; font-size: 0.9rem; }
+.cardForm .button { min-height: 40px; margin-top: 4px; }

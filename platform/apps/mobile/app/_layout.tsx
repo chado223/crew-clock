@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFonts, Barlow_400Regular, Barlow_500Medium, Barlow_600SemiBold } from "@expo-google-fonts/barlow";
 import { BarlowCondensed_600SemiBold } from "@expo-google-fonts/barlow-condensed";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { color } from "../lib/theme";
+import { CompanyProvider } from "../lib/company";
+import { color, font } from "../lib/theme";
+import { PENDING_INVITE_KEY } from "../lib/invite";
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({ Barlow_400Regular, Barlow_500Medium, Barlow_600SemiBold, BarlowCondensed_600SemiBold });
@@ -21,17 +24,35 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (session === undefined) return;
-    const onLogin = segments[0] === "login";
-    if (!session && !onLogin) router.replace("/login");
-    if (session && onLogin) router.replace("/");
+    const area = segments[0];
+    if (!session && area !== "login" && area !== "invite") {
+      router.replace("/login");
+      return;
+    }
+    if (session && area === "login") {
+      // Finish an invite that was opened before signing in.
+      AsyncStorage.getItem(PENDING_INVITE_KEY).then((token) => {
+        if (token) router.replace({ pathname: "/invite/[token]", params: { token } });
+        else router.replace("/");
+      });
+    }
   }, [session, segments, router]);
 
   if (!fontsLoaded || session === undefined) return null;
 
   return (
-    <>
+    <CompanyProvider key={session?.user.id ?? "signed-out"}>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.daylight } }} />
-    </>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: color.daylight },
+          headerTitleStyle: { fontFamily: font.textBold },
+          headerTintColor: color.turf,
+        }}
+      >
+        <Stack.Screen name="visit/[id]" options={{ headerShown: true, title: "Stop", headerBackTitle: "Today" }} />
+      </Stack>
+    </CompanyProvider>
   );
 }
