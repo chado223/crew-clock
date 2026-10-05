@@ -30,6 +30,13 @@ const MESSAGES: Record<string, string> = {
   invalid_activity_kind: "Pick what kind of entry this is.",
   summary_required: "Write a short note.",
   not_found: "That record doesn't exist or was removed.",
+  invalid_date_range: "Pick a date range of two months or less.",
+  visit_not_scheduled: "Only scheduled visits can be moved.",
+  visit_not_open: "This visit is already finished.",
+  date_required: "Pick a date.",
+  job_not_found: "That job doesn't exist.",
+  crew_not_found: "That crew doesn't exist.",
+  employee_not_found: "That employee doesn't exist.",
   week_start_mismatch: "That date isn't the first day of your work week.",
 };
 

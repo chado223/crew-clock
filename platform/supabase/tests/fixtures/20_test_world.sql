@@ -71,4 +71,21 @@ insert into public.time_entries (id, tenant_id, employee_id, user_id, clock_in, 
   ('7a000000-0000-0000-0000-000000000004', 'aaaaaaaa-0000-0000-0000-000000000000', 'ea000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000004', '2026-09-28 11:00+00', '2026-09-28 15:00+00', 'app'),
   ('7b000000-0000-0000-0000-000000000003', 'bbbbbbbb-0000-0000-0000-000000000000', 'eb000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000003', '2026-09-28 12:00+00', '2026-09-28 20:00+00', 'app');
 
+-- Field ops: a service, a weekly recurring job and one visit per company
+insert into public.services (id, tenant_id, name, default_price, default_minutes) values
+  ('5a000000-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000000', 'Mow & edge', 45, 40),
+  ('5b000000-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000000', 'Mow & edge', 50, 40);
+update public.jobs set kind = 'recurring', service_id = '5a000000-0000-0000-0000-000000000001', price = 45, est_minutes = 40,
+  interval_weeks = 1, weekday = 2, starts_on = '2026-09-01', crew_id = 'ca000000-0000-0000-0000-000000000001'
+  where id = 'f1a00000-0000-0000-0000-000000000001';
+update public.jobs set kind = 'recurring', service_id = '5b000000-0000-0000-0000-000000000001', price = 50, est_minutes = 40,
+  interval_weeks = 1, weekday = 3, starts_on = '2026-09-01', crew_id = 'cb000000-0000-0000-0000-000000000001'
+  where id = 'f1b00000-0000-0000-0000-000000000001';
+insert into public.visits (id, tenant_id, job_id, scheduled_date, generated_for) values
+  ('7a500000-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000000', 'f1a00000-0000-0000-0000-000000000001', '2026-09-29', '2026-09-29'),
+  ('7b500000-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000000', 'f1b00000-0000-0000-0000-000000000001', '2026-09-30', '2026-09-30');
+insert into public.visit_assignments (tenant_id, visit_id, employee_id) values
+  ('aaaaaaaa-0000-0000-0000-000000000000', '7a500000-0000-0000-0000-000000000001', 'ea000000-0000-0000-0000-000000000004'),
+  ('bbbbbbbb-0000-0000-0000-000000000000', '7b500000-0000-0000-0000-000000000001', 'eb000000-0000-0000-0000-000000000003');
+
 truncate public.audit_log;   -- tests start with a clean audit trail
