@@ -1,0 +1,36 @@
+name: Apps (typecheck + web build)
+
+on:
+  push:
+    paths: ["platform/apps/**", "platform/packages/**", "platform/package.json", ".github/workflows/apps.yml"]
+  pull_request:
+    paths: ["platform/apps/**", "platform/packages/**", "platform/package.json", ".github/workflows/apps.yml"]
+
+jobs:
+  apps:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Typecheck shared
+        run: npm run typecheck -w @crew/shared
+      - name: Typecheck mobile
+        run: npm run typecheck -w @crew/mobile
+      - name: Expo dependency check
+        working-directory: platform/apps/mobile
+        run: npx expo install --check
+      - name: Build web
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build -w @crew/web
+      - name: Typecheck web
+        run: npm run typecheck -w @crew/web
