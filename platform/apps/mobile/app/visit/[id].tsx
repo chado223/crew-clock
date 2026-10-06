@@ -1,11 +1,12 @@
 import { useCallback, useState } from "react";
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { appleStopUrl, friendlyError, googleRouteUrl } from "@crew/shared";
 import { supabase } from "../../lib/supabase";
 import { companyToday, useCompany } from "../../lib/company";
 import { pendingActions, pendingVisitStatus, perform } from "../../lib/actionQueue";
 import type { Stop } from "../../lib/stops";
+import { loadVisitPhotos, takeVisitPhoto, type PhotoKind, type VisitPhoto } from "../../lib/photos";
 import { color, font } from "../../lib/theme";
 
 function mapsUrl(stop: Stop) {
@@ -22,6 +23,8 @@ export default function VisitScreen() {
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<VisitPhoto[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     if (!company || !id) return;
@@ -40,7 +43,26 @@ export default function VisitScreen() {
     setStop(s);
     const queued = await pendingActions();
     setStatus(s ? (pendingVisitStatus(queued, s.visit_id) ?? s.status) : null);
+    if (s) setPhotos(await loadVisitPhotos(s.visit_id).catch(() => []));
   }, [company, id]);
+
+  async function addPhoto(kind: PhotoKind) {
+    if (!company || !stop) return;
+    setUploading(true);
+    setMessage(null);
+    try {
+      if (await takeVisitPhoto(company.tenant_id, stop.visit_id, kind)) {
+        setPhotos(await loadVisitPhotos(stop.visit_id));
+        setMessage("Photo saved.");
+      }
+    } catch (err) {
+      const m = err instanceof Error ? err.message : "";
+      setMessage(m.includes("permission_denied") ? "Allow camera access in Settings to add photos."
+        : m.toLowerCase().includes("network") ? "No signal. Try the photo again when you have service." : friendlyError(err));
+    } finally {
+      setUploading(false);
+    }
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -110,6 +132,31 @@ export default function VisitScreen() {
       </View>
 
       {stop.assignees.length > 0 && <Text style={styles.lede}>Also on this stop: {stop.assignees.join(", ")}</Text>}
+
+      {status !== "canceled" && (
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>Photos {photos.length > 0 ? `(${photos.length})` : ""}</Text>
+          {photos.length > 0 && (
+            <ScrollView horizontal contentContainerStyle={styles.thumbs} showsHorizontalScrollIndicator={false}>
+              {photos.map((p) => (
+                <View key={p.id} style={styles.thumbWrap}>
+                  {p.url ? <Image source={{ uri: p.url }} style={styles.thumb} accessibilityLabel={`${p.kind} photo`} /> : <View style={styles.thumb} />}
+                  <Text style={styles.thumbLabel}>{p.kind === "issue" ? "Problem" : p.kind === "before" ? "Before" : "After"}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+          <View style={styles.row}>
+            {(["before", "after", "issue"] as PhotoKind[]).map((k) => (
+              <Pressable key={k} accessibilityRole="button" disabled={uploading} onPress={() => addPhoto(k)}
+                style={({ pressed }) => [styles.photoBtn, (pressed || uploading) && styles.pressed]}>
+                <Text style={styles.photoBtnText}>{k === "issue" ? "Problem" : k === "before" ? "Before" : "After"}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {uploading && <Text style={styles.lede}>Uploading…</Text>}
+        </View>
+      )}
 
       {status === "completed" ? (
         <View style={[styles.card, styles.doneCard]}>
@@ -186,4 +233,10 @@ const styles = StyleSheet.create({
   doneCard: { backgroundColor: "#EEF3EA" },
   doneText: { fontFamily: font.textBold, fontSize: 22, color: color.turf },
   pressed: { opacity: 0.85 },
+  thumbs: { gap: 10, paddingVertical: 6 },
+  thumbWrap: { alignItems: "center", gap: 4 },
+  thumb: { width: 96, height: 96, borderRadius: 10, backgroundColor: color.line },
+  thumbLabel: { fontFamily: font.textMedium, fontSize: 13, color: color.inkSoft },
+  photoBtn: { flex: 1, minHeight: 52, borderRadius: 12, borderWidth: 1.5, borderColor: color.turf, alignItems: "center", justifyContent: "center" },
+  photoBtnText: { fontFamily: font.textBold, fontSize: 16, color: color.turf },
 });

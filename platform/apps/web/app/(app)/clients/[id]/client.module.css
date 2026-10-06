@@ -54,3 +54,8 @@
 .textButton { background: none; border: 0; padding: 0; color: var(--error); font: 500 0.9rem var(--font-text); cursor: pointer; }
 .checkRow { display: flex; gap: 8px; align-items: center; font-weight: 500; }
 .checkRow input { width: 20px; height: 20px; accent-color: var(--turf); }
+.photoGrid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+.photoGrid li { display: grid; gap: 4px; }
+.photoGrid img, .photoMissing { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: var(--line); }
+.photoActions { display: flex; gap: 10px; flex-wrap: wrap; }
+.linkButton { background: none; border: 0; padding: 0; color: var(--turf); font: 600 0.88rem var(--font-text); cursor: pointer; }
