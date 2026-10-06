@@ -2,9 +2,9 @@ name: Apps (typecheck + web build)
 
 on:
   push:
-    paths: ["platform/apps/**", "platform/packages/**", "platform/package.json", ".github/workflows/apps.yml"]
+    paths: ["platform/apps/**", "platform/packages/**", "platform/package.json", "platform/package-lock.json", ".github/workflows/apps.yml"]
   pull_request:
-    paths: ["platform/apps/**", "platform/packages/**", "platform/package.json", ".github/workflows/apps.yml"]
+    paths: ["platform/apps/**", "platform/packages/**", "platform/package.json", "platform/package-lock.json", ".github/workflows/apps.yml"]
 
 jobs:
   apps:
@@ -17,8 +17,12 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Install
-        run: npm install --no-audit --no-fund
+      - name: Install (exactly the lockfile)
+        run: npm ci --no-audit --no-fund
+      - name: Dependency audit (report only)
+        run: |
+          npm audit --omit=dev --audit-level=high > /tmp/audit.txt 2>&1 && echo "::notice title=npm-audit::no high or critical issues" || \
+            { grep -E "high|critical" /tmp/audit.txt | head -10 | sed 's/^/::warning title=npm-audit::/'; true; }
       - name: Typecheck shared
         run: npm run typecheck -w @crew/shared
       - name: Shared tests
