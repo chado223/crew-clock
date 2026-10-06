@@ -234,7 +234,7 @@ export default async function ClientPage({
   const { data: signedPhotos } = photos.length
     ? await supabase.storage.from("visit-photos").createSignedUrls(photos.map((p) => p.storage_path), 3600)
     : { data: [] as { path: string | null; signedUrl: string }[] };
-  const photoUrl = (path: string) => signedPhotos?.find((x) => x.path === path)?.signedUrl;
+  const photoUrl = (path: string): string | undefined => signedPhotos?.find((x) => x.path === path)?.signedUrl ?? undefined;
   const pref = (prefRow as { email_ok: boolean; sms_ok: boolean; sms_consent_at: string | null; sms_consent_source: string | null; kinds_off: string[]; unsubscribed_at: string | null } | null)
     ?? { email_ok: true, sms_ok: false, sms_consent_at: null, sms_consent_source: null, kinds_off: [], unsubscribed_at: null };
   const nextVisit = new Map<string, string>();
