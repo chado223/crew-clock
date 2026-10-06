@@ -47,3 +47,4 @@
 .list > li .row { border-bottom: 0; }
 .rateForm { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; padding: 0 16px 16px; }
 .rateHint { flex-basis: 100%; }
+.inlineRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

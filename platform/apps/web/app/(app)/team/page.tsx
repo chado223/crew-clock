@@ -44,20 +44,46 @@ async function createCrew(formData: FormData) {
 
 async function setCrewMembers(formData: FormData) {
   "use server";
+  const lead = String(formData.get("lead_id") ?? "");
+  const { error } = await (await supabaseServer()).rpc("set_crew_members", {
+    p_crew_id: String(formData.get("crew_id")),
+    p_employee_ids: formData.getAll("employee_id").map(String),
+    p_lead_id: lead || null,
+  } as never);
+  redirect(error ? `/team?error=${encodeURIComponent(friendlyError(error))}` : "/team");
+}
+
+async function changeRole(formData: FormData) {
+  "use server";
+  const { company } = await currentCompany();
+  const { error } = await (await supabaseServer()).rpc("set_member_role", {
+    p_tenant_id: company.tenant_id, p_user_id: String(formData.get("user_id")), p_role: String(formData.get("role")),
+  });
+  redirect(error ? `/team?error=${encodeURIComponent(friendlyError(error))}` : "/team?done=role");
+}
+
+async function setActive(formData: FormData) {
+  "use server";
   const { company } = await currentCompany();
   const supabase = await supabaseServer();
-  const crewId = String(formData.get("crew_id"));
-  const members = formData.getAll("employee_id").map(String);
-  const lead = String(formData.get("lead_id") ?? "");
-  const { error: delErr } = await supabase.from("crew_members").delete().eq("crew_id", crewId);
-  if (delErr) redirect(`/team?error=${encodeURIComponent(friendlyError(delErr))}`);
-  if (members.length > 0) {
-    const { error } = await supabase.from("crew_members").insert(
-      members.map((employee_id) => ({ tenant_id: company.tenant_id, crew_id: crewId, employee_id, is_lead: employee_id === lead })),
-    );
+  const employeeId = String(formData.get("employee_id"));
+  const userId = String(formData.get("user_id") ?? "");
+  const active = formData.get("active") === "1";
+  if (!active && userId) {
+    // Removing access first: the database protects owners and the last owner.
+    const { error } = await supabase.rpc("remove_member", { p_tenant_id: company.tenant_id, p_user_id: userId });
     if (error) redirect(`/team?error=${encodeURIComponent(friendlyError(error))}`);
   }
-  redirect("/team");
+  const { error, count } = await supabase.from("employees").update({ status: active ? "active" : "inactive" }, { count: "exact" }).eq("id", employeeId);
+  if (error) redirect(`/team?error=${encodeURIComponent(friendlyError(error))}`);
+  if (!count) redirect(`/team?error=${encodeURIComponent("Only the owner can change an owner's record.")}`);
+  redirect(`/team?done=${active ? "reactivated" : "deactivated"}`);
+}
+
+async function revokeInvite(formData: FormData) {
+  "use server";
+  const { error } = await (await supabaseServer()).rpc("revoke_invitation", { p_invitation_id: String(formData.get("invitation_id")) });
+  redirect(error ? `/team?error=${encodeURIComponent(friendlyError(error))}` : "/team?done=revoked");
 }
 
 async function setPayRate(formData: FormData) {
@@ -80,11 +106,11 @@ async function setPayRate(formData: FormData) {
 export default async function TeamPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invited?: string; error?: string }>;
+  searchParams: Promise<{ invited?: string; error?: string; done?: string }>;
 }) {
   const { company } = await currentCompany();
   if (!isManager(company)) redirect("/");
-  const { invited, error } = await searchParams;
+  const { invited, error, done } = await searchParams;
   const supabase = await supabaseServer();
 
   const [{ data: crews }, { data: crewMembers }] = await Promise.all([
@@ -118,6 +144,7 @@ export default async function TeamPage({
   return (
     <div className={styles.page}>
       <h1>Team</h1>
+      {done && <p className="notice" role="status">{{ role: "Role changed.", deactivated: "Deactivated. They can no longer sign in to this company.", reactivated: "Reactivated.", revoked: "Invite canceled." }[done] ?? "Saved."}</p>}
 
       <section aria-labelledby="invite" className={styles.invite}>
         <h2 id="invite">Invite someone</h2>
@@ -225,6 +252,37 @@ export default async function TeamPage({
                   <button className="button" type="submit">Save pay rate</button>
                   <p className={`hint ${styles.rateHint}`}>Earlier pay stays on earlier work, so past job costs don't change.</p>
                 </form>
+                <div className={styles.rateForm}>
+                  {company.role === "owner" && e.user_id && e.status === "active" && (
+                    <form action={changeRole} className={styles.inlineRow}>
+                      <input type="hidden" name="user_id" value={e.user_id} />
+                      <label htmlFor={`role-${e.id}`}>Role</label>
+                      <select id={`role-${e.id}`} name="role" defaultValue={roleOf.get(e.user_id) ?? "crew"} className="select">
+                        <option value="crew">Crew</option>
+                        <option value="admin">Admin</option>
+                        <option value="owner">Owner</option>
+                      </select>
+                      <button className="button quiet" type="submit">Change role</button>
+                    </form>
+                  )}
+                  <form action={setActive} className={styles.inlineRow}>
+                    <input type="hidden" name="employee_id" value={e.id} />
+                    <input type="hidden" name="user_id" value={e.user_id ?? ""} />
+                    {e.status === "active" ? (
+                      <>
+                        <input type="hidden" name="active" value="0" />
+                        <button className="button quiet" type="submit">Deactivate</button>
+                        <span className="hint">Removes their access. Their hours and history stay.</span>
+                      </>
+                    ) : (
+                      <>
+                        <input type="hidden" name="active" value="1" />
+                        <button className="button quiet" type="submit">Reactivate</button>
+                        <span className="hint">To sign in again they need a new invite.</span>
+                      </>
+                    )}
+                  </form>
+                </div>
               </details>
             </li>
           ))}
@@ -240,6 +298,10 @@ export default async function TeamPage({
                     Expires {new Date(p.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   </span>
                   <span className={styles.role}>{p.role}</span>
+                  <form action={revokeInvite}>
+                    <input type="hidden" name="invitation_id" value={p.id} />
+                    <button type="submit" className="button quiet">Cancel invite</button>
+                  </form>
                 </li>
               ))}
             </ul>

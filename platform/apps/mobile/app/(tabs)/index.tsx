@@ -5,7 +5,9 @@ import { Link, useFocusEffect } from "expo-router";
 import { elapsedSince, formatClockTime, formatDuration, friendlyError, googleRouteUrl, type NavTarget, type TimeEntry } from "@crew/shared";
 import { supabase } from "../../lib/supabase";
 import { companyToday, useCompany } from "../../lib/company";
-import { flush, pendingActions, pendingClockState, pendingVisitStatus, perform, type QueuedAction } from "../../lib/actionQueue";
+import { flush, pendingActions, pendingBreakState, pendingClockState, pendingVisitStatus, perform, type QueuedAction } from "../../lib/actionQueue";
+import { readCache, saveCache } from "../../lib/cache";
+import { flushPhotos } from "../../lib/photos";
 import type { Stop } from "../../lib/stops";
 import { color, font } from "../../lib/theme";
 
@@ -17,26 +19,44 @@ export default function TodayScreen() {
   const [now, setNow] = useState(() => new Date());
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [onBreak, setOnBreak] = useState(false);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const { rejected } = await flush().catch(() => ({ rejected: [] }));
+    await flushPhotos().catch(() => undefined);
     if (rejected.length > 0) setMessage(`Something saved on this phone couldn't be recorded: ${friendlyError(rejected[0]!.error)}`);
     setQueued(await pendingActions());
     if (!company?.employee_id) return;
 
     const today = companyToday(company.timezone);
-    const [{ data: entry }, { data: sched, error }] = await Promise.all([
+    const [{ data: entry, error: entryError }, { data: sched, error }] = await Promise.all([
       supabase
         .from("time_entries")
-        .select("id, tenant_id, employee_id, clock_in, clock_out")
+        .select("id, tenant_id, employee_id, clock_in, clock_out, time_entry_breaks(id, ended_at)")
         .eq("employee_id", company.employee_id)
         .is("clock_out", null)
         .is("voided_at", null)
         .maybeSingle(),
       supabase.rpc("schedule", { p_tenant_id: company.tenant_id, p_from: today, p_to: today }),
     ]);
-    setOpen((entry as TimeEntry | null) ?? null);
-    if (!error) setStops((sched ?? []) as Stop[]);
+    if (!entryError && !error) {
+      const e = (entry as (TimeEntry & { time_entry_breaks?: { ended_at: string | null }[] }) | null) ?? null;
+      setOpen(e);
+      setOnBreak(!!e?.time_entry_breaks?.some((b) => b.ended_at === null));
+      setStops((sched ?? []) as Stop[]);
+      setCachedAt(null);
+      await saveCache(company.tenant_id, "today", { day: today, entry: e, stops: sched ?? [] });
+    } else {
+      // No signal: show the last copy of today saved on this phone.
+      const c = await readCache<{ day: string; entry: (TimeEntry & { time_entry_breaks?: { ended_at: string | null }[] }) | null; stops: Stop[] }>(company.tenant_id, "today");
+      if (c && c.value.day === today) {
+        setOpen(c.value.entry);
+        setOnBreak(!!c.value.entry?.time_entry_breaks?.some((b) => b.ended_at === null));
+        setStops(c.value.stops);
+        setCachedAt(c.at);
+      }
+    }
   }, [company]);
 
   useFocusEffect(
@@ -58,6 +78,23 @@ export default function TodayScreen() {
   const pending = pendingClockState(queued);
   const onClock = pending ? pending.onClock : open !== null;
   const since = pending?.onClock ? pending.since : open?.clock_in;
+  const pendingBreak = pendingBreakState(queued);
+  const breakNow = onClock && (pendingBreak ?? onBreak);
+
+  async function onBreakTap() {
+    if (!company) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await perform({ kind: breakNow ? "break_end" : "break_start", tenantId: company.tenant_id });
+      if (result === "queued") setMessage("No signal. Saved on this phone; it will send automatically.");
+    } catch (err) {
+      setMessage(friendlyError(err));
+    } finally {
+      await refresh();
+      setBusy(false);
+    }
+  }
 
   async function onPunch() {
     if (!company) return;
@@ -93,7 +130,7 @@ export default function TodayScreen() {
     );
   }
 
-  const remaining = stops.filter((s) => (pendingVisitStatus(queued, s.visit_id) ?? s.status) !== "completed" && s.status !== "skipped" && s.status !== "canceled");
+  const remaining = stops.filter((s) => !["completed", "skipped", "canceled"].includes(pendingVisitStatus(queued, s.visit_id) ?? s.status));
   // The whole rest of the day in Google Maps, in the office's order, from where the phone is.
   const routeUrl = googleRouteUrl(
     remaining
@@ -117,7 +154,17 @@ export default function TodayScreen() {
             {onClock && since ? formatDuration(elapsedSince(since, now)) : "0:00"}
           </Text>
           {onClock && since && <Text style={[styles.since, styles.onSoft]}>since {formatClockTime(since, company.timezone)}</Text>}
+          {breakNow && <Text style={[styles.since, styles.onSoft]}>On break (unpaid)</Text>}
         </View>
+        {onClock && (
+          <Pressable accessibilityRole="button" disabled={busy} onPress={onBreakTap}
+            style={({ pressed }) => [styles.breakBtn, (pressed || busy) && styles.pressed]}>
+            <Text style={styles.breakText}>{breakNow ? "End break" : "Start break"}</Text>
+          </Pressable>
+        )}
+        {cachedAt && (
+          <Text style={styles.queued}>No signal. Showing today as saved at {formatClockTime(cachedAt, company.timezone)}.</Text>
+        )}
 
         {message && <Text style={styles.message}>{message}</Text>}
         {queued.length > 0 && (
@@ -144,7 +191,7 @@ export default function TodayScreen() {
                     <Text style={styles.stopSub} numberOfLines={1}>{s.address ?? s.job_title}</Text>
                   </View>
                   <Text style={[styles.stopStatus, status === "in_progress" && styles.working]}>
-                    {status === "completed" ? "Done" : status === "in_progress" ? "Working" : status === "skipped" ? "Skipped" : ""}
+                    {status === "completed" ? "Done" : status === "in_progress" ? "Working" : status === "skipped" ? "Not done" : ""}
                   </Text>
                 </Pressable>
               </Link>
@@ -195,6 +242,8 @@ const styles = StyleSheet.create({
   message: { fontFamily: font.textMedium, fontSize: 16, color: color.ink },
   queued: { fontFamily: font.text, fontSize: 15, color: color.inkSoft },
 
+  breakBtn: { minHeight: 52, borderRadius: 14, borderWidth: 1.5, borderColor: color.line, backgroundColor: color.surface, alignItems: "center", justifyContent: "center" },
+  breakText: { fontFamily: font.textBold, fontSize: 17, color: color.ink },
   routeBtn: { minHeight: 56, borderRadius: 14, borderWidth: 1.5, borderColor: color.turf, alignItems: "center", justifyContent: "center", paddingHorizontal: 16 },
   routeText: { fontFamily: font.textBold, fontSize: 17, color: color.turf },
   stopsHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginTop: 8 },
