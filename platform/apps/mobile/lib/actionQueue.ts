@@ -14,7 +14,10 @@ export type FieldAction =
   | { kind: "in"; tenantId: string }
   | { kind: "out"; tenantId: string }
   | { kind: "start_visit"; tenantId: string; visitId: string }
-  | { kind: "complete_visit"; tenantId: string; visitId: string; notes?: string };
+  | { kind: "complete_visit"; tenantId: string; visitId: string; notes?: string }
+  | { kind: "break_start"; tenantId: string }
+  | { kind: "break_end"; tenantId: string }
+  | { kind: "report_problem"; tenantId: string; visitId: string; reason: string };
 
 export type QueuedAction = FieldAction & { eventId: string; at: string; attempts: number };
 
@@ -65,6 +68,17 @@ async function send(a: QueuedAction) {
     case "start_visit":
       result = await supabase.rpc("start_visit", { p_visit_id: a.visitId, p_at: a.at });
       break;
+    case "break_start":
+      result = await supabase.rpc("start_break", { p_tenant_id: a.tenantId, p_client_event_id: a.eventId, p_at: a.at });
+      break;
+    case "break_end":
+      result = await supabase.rpc("end_break", { p_tenant_id: a.tenantId, p_at: a.at });
+      // Already ended (a retry after a lost reply) is the result we wanted.
+      if (result.error && /not_on_break/.test(result.error.message)) return;
+      break;
+    case "report_problem":
+      result = await supabase.rpc("report_visit_problem", { p_visit_id: a.visitId, p_reason: a.reason, p_at: a.at });
+      break;
     case "complete_visit":
       result = await supabase.rpc("complete_visit", { p_visit_id: a.visitId, p_notes: a.notes ?? null, p_at: a.at });
       break;
@@ -114,8 +128,15 @@ export function pendingClockState(queue: QueuedAction[]): { onClock: boolean; si
   return last ? { onClock: last.kind === "in", since: last.at } : null;
 }
 
-export function pendingVisitStatus(queue: QueuedAction[], visitId: string): "in_progress" | "completed" | null {
-  const last = [...queue].reverse().find((q) => (q.kind === "start_visit" || q.kind === "complete_visit") && q.visitId === visitId);
+export function pendingVisitStatus(queue: QueuedAction[], visitId: string): "in_progress" | "completed" | "skipped" | null {
+  const last = [...queue].reverse().find(
+    (q) => (q.kind === "start_visit" || q.kind === "complete_visit" || q.kind === "report_problem") && q.visitId === visitId,
+  );
   if (!last) return null;
-  return last.kind === "complete_visit" ? "completed" : "in_progress";
+  return last.kind === "complete_visit" ? "completed" : last.kind === "report_problem" ? "skipped" : "in_progress";
+}
+
+export function pendingBreakState(queue: QueuedAction[]): boolean | null {
+  const last = [...queue].reverse().find((q) => q.kind === "break_start" || q.kind === "break_end" || q.kind === "out");
+  return last ? last.kind === "break_start" : null;
 }

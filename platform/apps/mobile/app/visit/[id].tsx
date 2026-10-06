@@ -5,6 +5,7 @@ import { appleStopUrl, friendlyError, googleRouteUrl } from "@crew/shared";
 import { supabase } from "../../lib/supabase";
 import { companyToday, useCompany } from "../../lib/company";
 import { pendingActions, pendingVisitStatus, perform } from "../../lib/actionQueue";
+import { readCache } from "../../lib/cache";
 import type { Stop } from "../../lib/stops";
 import { loadVisitPhotos, takeVisitPhoto, type PhotoKind, type VisitPhoto } from "../../lib/photos";
 import { color, font } from "../../lib/theme";
@@ -25,6 +26,8 @@ export default function VisitScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [photos, setPhotos] = useState<VisitPhoto[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [showProblem, setShowProblem] = useState(false);
 
   const load = useCallback(async () => {
     if (!company || !id) return;
@@ -39,21 +42,42 @@ export default function VisitScreen() {
       p_from: from.toISOString().slice(0, 10),
       p_to: to.toISOString().slice(0, 10),
     });
-    const s = ((data ?? []) as Stop[]).find((x) => x.visit_id === id) ?? null;
+    let s = ((data ?? []) as Stop[]).find((x) => x.visit_id === id) ?? null;
+    if (!s) {
+      // No signal: use today's copy saved on this phone.
+      const c = await readCache<{ stops: Stop[] }>(company.tenant_id, "today");
+      s = c?.value.stops.find((x) => x.visit_id === id) ?? null;
+    }
     setStop(s);
     const queued = await pendingActions();
     setStatus(s ? (pendingVisitStatus(queued, s.visit_id) ?? s.status) : null);
     if (s) setPhotos(await loadVisitPhotos(s.visit_id).catch(() => []));
   }, [company, id]);
 
+  async function reportProblem() {
+    if (!company || !stop || problem.trim().length < 3) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await perform({ kind: "report_problem", tenantId: company.tenant_id, visitId: stop.visit_id, reason: problem.trim() });
+      setStatus("skipped");
+      setMessage(result === "queued" ? "No signal. Saved on this phone; the office will see it when it sends." : "The office has been told.");
+    } catch (err) {
+      setMessage(friendlyError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addPhoto(kind: PhotoKind) {
     if (!company || !stop) return;
     setUploading(true);
     setMessage(null);
     try {
-      if (await takeVisitPhoto(company.tenant_id, stop.visit_id, kind)) {
-        setPhotos(await loadVisitPhotos(stop.visit_id));
-        setMessage("Photo saved.");
+      const r = await takeVisitPhoto(company.tenant_id, stop.visit_id, kind);
+      if (r) {
+        setPhotos(await loadVisitPhotos(stop.visit_id).catch(() => photos));
+        setMessage(r === "sent" ? "Photo saved." : "No signal. The photo is saved on this phone and will send automatically.");
       }
     } catch (err) {
       const m = err instanceof Error ? err.message : "";
@@ -141,7 +165,7 @@ export default function VisitScreen() {
               {photos.map((p) => (
                 <View key={p.id} style={styles.thumbWrap}>
                   {p.url ? <Image source={{ uri: p.url }} style={styles.thumb} accessibilityLabel={`${p.kind} photo`} /> : <View style={styles.thumb} />}
-                  <Text style={styles.thumbLabel}>{p.kind === "issue" ? "Problem" : p.kind === "before" ? "Before" : "After"}</Text>
+                  <Text style={styles.thumbLabel}>{p.kind === "issue" ? "Problem" : p.kind === "before" ? "Before" : "After"}{p.pending ? " · waiting" : ""}</Text>
                 </View>
               ))}
             </ScrollView>
@@ -165,7 +189,8 @@ export default function VisitScreen() {
         </View>
       ) : status === "skipped" || status === "canceled" ? (
         <View style={styles.card}>
-          <Text style={styles.body16}>This stop was {status}{stop.status_reason ? `: ${stop.status_reason}` : "."}</Text>
+          <Text style={styles.body16}>{status === "skipped" ? "Not done" : "Canceled"}{stop.status_reason ? `: ${stop.status_reason.replace(/^Crew: /, "")}` : "."}</Text>
+          {message && <Text style={styles.message}>{message}</Text>}
         </View>
       ) : (
         <>
@@ -191,6 +216,29 @@ export default function VisitScreen() {
             style={({ pressed }) => [styles.primary, (pressed || busy) && styles.pressed]}>
             <Text style={styles.primaryText}>Mark done</Text>
           </Pressable>
+          {!showProblem ? (
+            <Pressable accessibilityRole="button" onPress={() => setShowProblem(true)} hitSlop={10}>
+              <Text style={styles.problemLink}>Couldn't do this stop?</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>What happened</Text>
+              <TextInput
+                accessibilityLabel="Why the stop couldn't be done"
+                value={problem}
+                onChangeText={setProblem}
+                placeholder="e.g. Gate locked, dog in yard, too wet"
+                placeholderTextColor={color.inkSoft}
+                style={styles.input}
+                maxLength={300}
+                multiline
+              />
+              <Pressable accessibilityRole="button" disabled={busy || problem.trim().length < 3} onPress={reportProblem}
+                style={({ pressed }) => [styles.secondary, (pressed || busy || problem.trim().length < 3) && styles.pressed]}>
+                <Text style={styles.secondaryText}>Tell the office</Text>
+              </Pressable>
+            </View>
+          )}
         </>
       )}
     </ScrollView>
@@ -233,6 +281,7 @@ const styles = StyleSheet.create({
   doneCard: { backgroundColor: "#EEF3EA" },
   doneText: { fontFamily: font.textBold, fontSize: 22, color: color.turf },
   pressed: { opacity: 0.85 },
+  problemLink: { fontFamily: font.textBold, fontSize: 16, color: color.error, textAlign: "center", paddingVertical: 8 },
   thumbs: { gap: 10, paddingVertical: 6 },
   thumbWrap: { alignItems: "center", gap: 4 },
   thumb: { width: 96, height: 96, borderRadius: 10, backgroundColor: color.line },
