@@ -67,8 +67,14 @@ Patching these in Flask would change historical payroll numbers mid-stream. They
 - Narrow Sheets scope from `drive` to `spreadsheets` only (test on Render first; `open_by_key` works with spreadsheets scope)
 
 ## Next up (not blocked on Chad)
-- Mobile: accept invites in-app (deep link), crew's own week of hours
-- Staging: Supabase email template with 6-digit code for mobile sign-in (needs dashboard access or Management API)
-- Web preview host for staging (Vercel connector; free tier is non-commercial, so production needs Pro: owner decision later)
+- Owner dashboard: today at a glance (crews, clocked-in, weather alerts, open requests, A/R, messages that failed)
+- Mobile: weather and route context on the crew's Today screen; job photos (before/after) with customer-visible flag
+- Visit-moved notice to customers (template exists) wired to weather moves, behind the same test-mode locks
 - Generated DB types via CI instead of hand-written ones
-- Phase 3: jobs/visits with recurrence, scheduling board, crew assignment
+- Scheduler for weather + messages once hosting is chosen (code runs anywhere Node reaches the DB; today: GitHub Actions on staging only)
+
+## Owner decisions pending
+- Email provider (e.g. Postmark/Resend/SES) and SMS provider (e.g. Twilio) + turning on live messaging (`private.platform_flags.live_messaging`)
+- Paid road routing (Google Route Optimization / Mapbox) if straight-line ordering isn't good enough
+- Hosting for web + scheduler; Supabase Pro; Apple Developer account
+- Production migrations + owner link script (`platform/supabase/ops/0001_link_production_owner.sql`)

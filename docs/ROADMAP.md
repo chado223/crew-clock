@@ -6,6 +6,22 @@ Phases follow the handoff, with the CRM requirement folded in where its data is 
 
 ---
 
+## Status (2026-10-06)
+
+Built and tested on staging (open PRs, stacked; nothing merged or deployed to production):
+
+| PR | What | Tests |
+|---|---|---|
+| #1–#7 | Audit + Flask hotfix, foundation, time clock, onboarding, CRM, jobs/visits/scheduling, job costing, estimates/invoices | db + staging |
+| #8 | Customer portal (database-enforced customer isolation) | 58 portal security assertions |
+| #9 | Weather (NWS): company rules, alerts, office decisions, worker, live staging e2e | 63 + unit + live e2e |
+| next | Routes: yards, ordered stops, free straight-line planner behind a provider interface, map handoff on web and phone | 25 + unit |
+| next | Communications: test-mode-by-default outbox, two live locks, templates, preferences, workflows, dispatcher, staff and portal screens | 70 + unit + staging e2e |
+
+Waiting on owner decisions: production migrations and cutover, hosting (Vercel/Supabase Pro), email/SMS provider and enabling live messaging, paid routing provider, Apple Developer account.
+
+**Rule:** a migration already applied to staging is never edited; fixes go in a new migration. `apply_migrations.sh` records a fingerprint per migration and fails CI on drift.
+
 ## Phase 0: Audit & Stabilization *(this PR)*
 
 - [x] Repo, history, routes, deployment, security audit → `docs/ARCHITECTURE_AUDIT.md`
