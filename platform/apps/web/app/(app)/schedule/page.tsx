@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { friendlyError, weekStart } from "@crew/shared";
+import { friendlyError, weekStart, zonedLocalToIso } from "@crew/shared";
 import { currentCompany, isManager } from "@/lib/company";
 import { supabaseServer } from "@/lib/supabase/server";
 import styles from "./schedule.module.css";
@@ -76,6 +76,52 @@ async function skipVisit(formData: FormData) {
   done(week, error ? { error: friendlyError(error) } : { saved: "Visit skipped. It's noted in the customer's history." });
 }
 
+async function markDone(formData: FormData) {
+  "use server";
+  const { company } = await currentCompany();
+  const week = String(formData.get("week"));
+  const date = String(formData.get("date"));
+  const time = String(formData.get("time") || "12:00");
+  let at: string;
+  try {
+    at = zonedLocalToIso(`${date}T${time}`, company.timezone);
+  } catch {
+    done(week, { error: "Pick a valid time." });
+  }
+  const { error } = await (await supabaseServer()).rpc("complete_visit", {
+    p_visit_id: String(formData.get("visit_id")),
+    p_notes: String(formData.get("notes") ?? "").trim() || null,
+    p_at: at!,
+  } as never);
+  revalidatePath("/schedule");
+  done(week, error ? { error: friendlyError(error) } : { saved: "Marked done. It can be invoiced now." });
+}
+
+async function assignVisit(formData: FormData) {
+  "use server";
+  const week = String(formData.get("week"));
+  const crew = String(formData.get("crew_id") ?? "");
+  const { error } = await (await supabaseServer()).rpc("assign_visit", {
+    p_visit_id: String(formData.get("visit_id")),
+    p_crew_id: crew || null,
+    p_employee_ids: formData.getAll("employee_id").map(String),
+  } as never);
+  revalidatePath("/schedule");
+  done(week, error ? { error: friendlyError(error) } : { saved: "Assignment saved." });
+}
+
+async function addVisit(formData: FormData) {
+  "use server";
+  const { company } = await currentCompany();
+  const week = String(formData.get("week"));
+  const job = String(formData.get("job_id") ?? "");
+  const date = String(formData.get("date") ?? "");
+  if (!job || !date) done(week, { error: "Pick a job and a date." });
+  const { error } = await (await supabaseServer()).from("visits").insert({ tenant_id: company.tenant_id, job_id: job, scheduled_date: date });
+  revalidatePath("/schedule");
+  done(week, error ? { error: friendlyError(error) } : { saved: "Visit added." });
+}
+
 const STATUS_TEXT: Record<Visit["status"], string> = {
   scheduled: "",
   in_progress: "In progress",
@@ -98,10 +144,13 @@ export default async function SchedulePage({
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: company.timezone }).format(new Date());
 
   const supabase = await supabaseServer();
-  const [{ data, error }, { data: crews }] = await Promise.all([
+  const [{ data, error }, { data: crews }, { data: staff }, { data: jobRows }] = await Promise.all([
     supabase.rpc("schedule", { p_tenant_id: company.tenant_id, p_from: days[0]!, p_to: days[6]! }),
     supabase.from("crews").select("id, name").eq("tenant_id", company.tenant_id).eq("active", true).order("name"),
+    supabase.from("employees").select("id, display_name").eq("tenant_id", company.tenant_id).eq("status", "active").order("display_name"),
+    supabase.from("jobs").select("id, title, clients(name)").eq("tenant_id", company.tenant_id).in("status", ["scheduled", "active"]).order("title").limit(500),
   ]);
+  const jobs = (jobRows ?? []) as unknown as { id: string; title: string; clients: { name: string } | null }[];
   const visits = (data ?? []) as Visit[];
   const rows: { id: string | null; name: string }[] = [
     ...(crews ?? []).map((c) => ({ id: c.id as string, name: c.name as string })),
@@ -126,6 +175,23 @@ export default async function SchedulePage({
           </form>
         </div>
       </header>
+      {jobs.length > 0 && (
+        <details className={styles.addVisit}>
+          <summary>Add a visit</summary>
+          <form action={addVisit} className={styles.addVisitForm}>
+            <input type="hidden" name="week" value={week} />
+            <div className="field">
+              <label htmlFor="av-job">Job</label>
+              <select id="av-job" name="job_id" required className="select">
+                {jobs.map((j) => <option key={j.id} value={j.id}>{j.clients?.name ? `${j.clients.name}: ` : ""}{j.title}</option>)}
+              </select>
+            </div>
+            <div className="field"><label htmlFor="av-date">Date</label><input id="av-date" name="date" type="date" required defaultValue={today} className="input" /></div>
+            <button className="button" type="submit">Add visit</button>
+          </form>
+          <p className={styles.small}>For an extra or make-up visit. It uses the job's price, time and crew.</p>
+        </details>
+      )}
 
       {sp.saved && <p className="notice" role="status">{sp.saved}</p>}
       {sp.error && <p className="error-text" role="alert">{sp.error}</p>}
@@ -168,6 +234,36 @@ export default async function SchedulePage({
                         {v.assignees.length > 0 && <p className={styles.small}>Also on it: {v.assignees.join(", ")}</p>}
                         {v.status_reason && <p className={styles.small}>{v.status_reason}</p>}
                         {v.client_id && <Link href={`/clients/${v.client_id}`} className={styles.small}>Customer record</Link>}
+                        {(v.status === "scheduled" || v.status === "in_progress") && v.scheduled_date <= today && (
+                          <form action={markDone} className={styles.cardForm}>
+                            <input type="hidden" name="visit_id" value={v.visit_id} />
+                            <input type="hidden" name="week" value={week} />
+                            <input type="hidden" name="date" value={v.scheduled_date} />
+                            <label htmlFor={`t-${v.visit_id}`}>Finished at</label>
+                            <input id={`t-${v.visit_id}`} name="time" type="time" defaultValue="12:00" className="input" />
+                            <label htmlFor={`n-${v.visit_id}`}>Note (optional)</label>
+                            <input id={`n-${v.visit_id}`} name="notes" className="input" placeholder="e.g. Crew forgot to tap Done" />
+                            <button className="button" type="submit">Mark done</button>
+                          </form>
+                        )}
+                        {v.status === "scheduled" && (
+                          <form action={assignVisit} className={styles.cardForm}>
+                            <input type="hidden" name="visit_id" value={v.visit_id} />
+                            <input type="hidden" name="week" value={week} />
+                            <label htmlFor={`a-${v.visit_id}`}>Crew</label>
+                            <select id={`a-${v.visit_id}`} name="crew_id" defaultValue={v.crew_id ?? ""} className="select">
+                              <option value="">No crew</option>
+                              {(crews ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                            <fieldset className={styles.people}>
+                              <legend>Also send</legend>
+                              {(staff ?? []).map((e) => (
+                                <label key={e.id}><input type="checkbox" name="employee_id" value={e.id} defaultChecked={v.assignees.includes(e.display_name)} /> {e.display_name}</label>
+                              ))}
+                            </fieldset>
+                            <button className="button quiet" type="submit">Save assignment</button>
+                          </form>
+                        )}
                         {v.status === "scheduled" && (
                           <>
                             <form action={moveVisit} className={styles.cardForm}>

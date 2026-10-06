@@ -31,6 +31,8 @@ export interface MessagesDb {
   workflowTenants(): Promise<string[]>;
   queueVisitReminders(tenant: string): Promise<number>;
   queueInvoiceReminders(tenant: string): Promise<number>;
+  /** Optional: keep every company's schedule filled ahead (runs before reminders). */
+  fillSchedules?(days: number): Promise<number>;
 }
 
 /** Records the message and reports it sent. Nothing leaves the system. */
@@ -55,6 +57,7 @@ export interface DispatchOptions {
 }
 
 export interface DispatchSummary {
+  visitsAdded: number;
   queuedByWorkflows: number;
   claimed: number;
   sent: number;
@@ -64,7 +67,8 @@ export interface DispatchSummary {
 
 export async function dispatch(db: MessagesDb, opts: DispatchOptions = {}): Promise<DispatchSummary> {
   const log = opts.log ?? (() => {});
-  const s: DispatchSummary = { queuedByWorkflows: 0, claimed: 0, sent: 0, failed: 0, heldLive: 0 };
+  const s: DispatchSummary = { visitsAdded: 0, queuedByWorkflows: 0, claimed: 0, sent: 0, failed: 0, heldLive: 0 };
+  if (db.fillSchedules) s.visitsAdded = await db.fillSchedules(21);
 
   for (const t of await db.workflowTenants()) {
     s.queuedByWorkflows += await db.queueVisitReminders(t);
@@ -116,5 +120,6 @@ export function pgMessagesDb(c: Queryable): MessagesDb {
     },
     queueVisitReminders: (t) => n("select public.queue_visit_reminders($1) as n", [t]),
     queueInvoiceReminders: (t) => n("select public.queue_invoice_reminders($1) as n", [t]),
+    fillSchedules: (days) => n("select public.automation_fill_schedules($1) as n", [days]),
   };
 }

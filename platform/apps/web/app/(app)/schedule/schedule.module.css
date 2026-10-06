@@ -45,3 +45,8 @@
 .cardForm label { font-size: 0.82rem; font-weight: 600; }
 .cardForm .input, .cardForm .select { min-height: 40px; font-size: 0.9rem; }
 .cardForm .button { min-height: 40px; margin-top: 4px; }
+.addVisit summary { cursor: pointer; font-weight: 600; color: var(--turf); padding: 4px 0; }
+.addVisitForm { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; padding: 8px 0; }
+.people { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
+.people legend { font-weight: 600; font-size: 0.9rem; padding: 0; margin-bottom: 4px; }
+.people label { display: flex; gap: 6px; align-items: center; font-size: 0.92rem; }

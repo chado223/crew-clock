@@ -54,6 +54,12 @@ export default async function TodayPage() {
   const yesterday = localDate(new Date(now.getTime() - 86_400_000), company.timezone);
   const week = weekStart(now, company.timezone);
   const none = Promise.resolve({ data: null, error: null });
+  if (manager) {
+    // Keep the next three weeks filled from recurring jobs (idempotent; the background job does this too once hosted).
+    const until = localDate(new Date(now.getTime() + 21 * 86_400_000), company.timezone);
+    const { error: fillError } = await supabase.rpc("generate_visits", { p_tenant_id: company.tenant_id, p_from: today, p_to: until });
+    if (fillError) console.error("[today] schedule fill failed:", fillError.message);
+  }
 
   const [{ data: shifts, error: shiftsError }, { data: weekly, error: weeklyError }, { data: ov }, { data: att }, { data: sched }] = await Promise.all([
     supabase.rpc("timesheet", { p_tenant_id: company.tenant_id, p_from: yesterday, p_to: today }),

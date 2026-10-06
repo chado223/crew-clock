@@ -19,7 +19,7 @@ const msg = (id: string, over: Partial<OutboundMessage> = {}): OutboundMessage =
 test("test-mode messages go to the log provider by default; nothing real is used", async () => {
   const { db, results } = fakeDb([msg("a"), msg("b", { channel: "sms", delivered_to: "+15555550100" })]);
   const s = await dispatch(db);
-  assert.deepEqual(s, { queuedByWorkflows: 3, claimed: 2, sent: 2, failed: 0, heldLive: 0 });
+  assert.deepEqual(s, { visitsAdded: 0, queuedByWorkflows: 3, claimed: 2, sent: 2, failed: 0, heldLive: 0 });
   assert.ok(results.every((r) => r.provider === "log" && r.ok));
 });
 
