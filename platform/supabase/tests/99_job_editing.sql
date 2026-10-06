@@ -57,3 +57,14 @@ select tests.login('b0000000-0000-0000-0000-000000000001');
 set role authenticated;
 select tests.throws($$select public.update_job('f1a00000-0000-0000-0000-000000000001', p_price := 1)$$, '%forbidden%', 'Other company cannot edit jobs');
 reset role;
+
+-- Background fill keeps schedules ahead for every company (service only)
+select tests.login('a0000000-0000-0000-0000-000000000001');
+set role authenticated;
+select tests.throws($$select public.automation_fill_schedules()$$, '%permission denied%', 'Only the background job can fill every company');
+reset role;
+select tests.login(null);
+set role service_role;
+select tests.ok(public.automation_fill_schedules(21) >= 1, 'Background fill adds upcoming visits (company B''s weekly job)');
+select tests.is(public.automation_fill_schedules(21), 0, 'Running it again adds nothing');
+reset role;
