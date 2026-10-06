@@ -6,6 +6,7 @@ import { friendlyError } from "@crew/shared";
 import { currentCompany, isManager } from "@/lib/company";
 import { supabaseServer } from "@/lib/supabase/server";
 import { siteOrigin } from "@/lib/origin";
+import { readFlash, setFlash } from "@/lib/flash";
 import { describeMessage, MESSAGE_COLUMNS, TEMPLATE_LABEL, type MessageRow } from "@/lib/messages";
 import styles from "./client.module.css";
 
@@ -98,7 +99,11 @@ async function addJob(formData: FormData) {
   } else {
     const end = new Date(`${date}T12:00:00Z`);
     end.setUTCDate(end.getUTCDate() + 42);
-    await supabase.rpc("generate_visits", { p_tenant_id: company.tenant_id, p_from: date, p_to: end.toISOString().slice(0, 10) });
+    const { error: genError } = await supabase.rpc("generate_visits", { p_tenant_id: company.tenant_id, p_from: date, p_to: end.toISOString().slice(0, 10) });
+    if (genError) {
+      console.error("[clients] generate_visits failed:", genError.message);
+      redirect(`/clients/${id}?error=${encodeURIComponent("The job was saved, but its visits weren't scheduled. Use Fill on the Schedule page.")}`);
+    }
   }
   revalidatePath(`/clients/${id}`);
   redirect(`/clients/${id}`);
@@ -114,16 +119,18 @@ async function invitePortal(formData: FormData) {
   });
   if (!error) {
     const { company } = await currentCompany();
-    await supabase.rpc("send_invite_message", {
+    const { error: mailError } = await supabase.rpc("send_invite_message", {
       p_tenant_id: company.tenant_id,
       p_kind: "portal_invite",
       p_to: String(formData.get("email") ?? ""),
       p_link: `${await siteOrigin()}/portal/join/${String(data)}`,
       p_client_id: id,
     });
+    if (mailError) console.error("[clients] portal invite email not queued:", mailError.message);
   }
   revalidatePath(`/clients/${id}`);
-  redirect(`/clients/${id}?${error ? `error=${encodeURIComponent(friendlyError(error))}` : `portal_invite=${encodeURIComponent(String(data))}`}`);
+  if (!error) await setFlash("portal_invite", String(data), `/clients/${id}`);
+  redirect(`/clients/${id}?${error ? `error=${encodeURIComponent(friendlyError(error))}` : "portal_invite=1"}`);
 }
 
 async function savePreferences(formData: FormData) {
@@ -201,7 +208,8 @@ export default async function ClientPage({
   const { company } = await currentCompany();
   if (!isManager(company)) redirect("/");
   const { id } = await params;
-  const { error, portal_invite } = await searchParams;
+  const { error, portal_invite: portalInviteFlag } = await searchParams;
+  const portal_invite = portalInviteFlag ? await readFlash("portal_invite") : null;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
   const supabase = await supabaseServer();
@@ -232,7 +240,7 @@ export default async function ClientPage({
   const photos = (photoRows ?? []) as unknown as { id: string; kind: string; caption: string | null; storage_path: string;
     customer_visible: boolean; taken_at: string; visits: { scheduled_date: string } | null }[];
   const { data: signedPhotos } = photos.length
-    ? await supabase.storage.from("visit-photos").createSignedUrls(photos.map((p) => p.storage_path), 3600)
+    ? await supabase.storage.from("visit-photos").createSignedUrls(photos.map((p) => p.storage_path), 300)
     : { data: [] as { path: string | null; signedUrl: string }[] };
   const photoUrl = (path: string): string | undefined => signedPhotos?.find((x) => x.path === path)?.signedUrl ?? undefined;
   const pref = (prefRow as { email_ok: boolean; sms_ok: boolean; sms_consent_at: string | null; sms_consent_source: string | null; kinds_off: string[]; unsubscribed_at: string | null } | null)
@@ -489,7 +497,7 @@ export default async function ClientPage({
               <div className="notice">
                 <p>Invite queued in Messages (test mode sends it to your test address). You can also send this link yourself. It works once, for that email, for 14 days.</p>
                 <input readOnly className="input" style={{ width: "100%", marginTop: 8 }} aria-label="Portal invite link"
-                  value={`${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/portal/join/${portal_invite}`} />
+                  value={`${await siteOrigin()}/portal/join/${portal_invite}`} />
               </div>
             )}
             <form action={invitePortal} className={styles.inlineForm}>

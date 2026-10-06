@@ -63,10 +63,10 @@ async function send(a: QueuedAction) {
       result = await supabase.rpc("clock_out", { p_tenant_id: a.tenantId, p_client_event_id: a.eventId, p_at: a.at });
       break;
     case "start_visit":
-      result = await supabase.rpc("start_visit", { p_visit_id: a.visitId });
+      result = await supabase.rpc("start_visit", { p_visit_id: a.visitId, p_at: a.at });
       break;
     case "complete_visit":
-      result = await supabase.rpc("complete_visit", { p_visit_id: a.visitId, p_notes: a.notes ?? null });
+      result = await supabase.rpc("complete_visit", { p_visit_id: a.visitId, p_notes: a.notes ?? null, p_at: a.at });
       break;
   }
   if (result.error) throw result.error;

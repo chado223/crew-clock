@@ -102,6 +102,6 @@ reset role;
 select tests.login('a0000000-0000-0000-0000-000000000003');
 set role authenticated;
 select tests.is(tests.count($$select 1 from public.profiles where id = 'b0000000-0000-0000-0000-000000000001'$$), 0::bigint, 'A crew cannot see B owner profile');
-select tests.is(tests.count($$select 1 from public.profiles where id = 'a0000000-0000-0000-0000-000000000001'$$), 1::bigint, 'A crew can see A owner profile');
+select tests.is(tests.count($$select 1 from public.profiles where id = 'a0000000-0000-0000-0000-000000000001'$$), 0::bigint, 'A crew cannot read the owner''s profile (only their own)');
 select tests.is(tests.affected($$update public.profiles set full_name = 'hacked' where id = 'a0000000-0000-0000-0000-000000000001'$$), 0::bigint, 'A crew cannot edit A owner profile');
 reset role;

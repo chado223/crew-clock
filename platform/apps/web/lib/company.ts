@@ -28,6 +28,4 @@ export function isManager(c: Company) {
 }
 
 /** Only allow redirects to paths on this site. */
-export function safeNext(next: string | null | undefined, fallback = "/") {
-  return next && next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : fallback;
-}
+export { safeNext } from "@crew/shared";

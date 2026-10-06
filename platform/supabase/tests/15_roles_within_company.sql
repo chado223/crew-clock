@@ -12,8 +12,10 @@ select tests.is(tests.count('select 1 from public.activity'), 0::bigint, 'Crew c
 select tests.is(tests.count('select 1 from public.time_entries'), 1::bigint, 'Crew sees only their own time entry');
 select tests.is(tests.count($$select 1 from public.time_entries where id = '7a000000-0000-0000-0000-000000000004'$$), 0::bigint, 'Crew cannot see coworker time');
 select tests.is((select count(*) from public.timesheet('aaaaaaaa-0000-0000-0000-000000000000', '2026-09-01', '2026-10-31')), 1::bigint, 'Crew timesheet shows only their own shift');
-select tests.is(tests.count('select 1 from public.employees'), 5::bigint, 'Crew can see coworker names');
-select tests.is(tests.count('select 1 from public.clients'), 1::bigint, 'Crew can see company clients (job addresses)');
+select tests.is(tests.count('select 1 from public.employees'), 1::bigint, 'Crew sees only their own employee record (no coworker HR data)');
+select tests.is(tests.count('select 1 from public.clients') + tests.count('select 1 from public.jobs') + tests.count('select 1 from public.properties')
+  + tests.count('select 1 from public.services') + tests.count('select 1 from public.visits'), 0::bigint,
+  'Crew read no customer, job, price or visit tables directly (stops come through schedule())');
 
 select tests.throws($$insert into public.clients (tenant_id, name) values ('aaaaaaaa-0000-0000-0000-000000000000', 'x')$$, '%row-level security%', 'Crew cannot create clients');
 select tests.is(tests.affected($$update public.clients set name = 'x' where tenant_id = 'aaaaaaaa-0000-0000-0000-000000000000'$$), 0::bigint, 'Crew cannot edit clients');
