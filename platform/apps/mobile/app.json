@@ -14,7 +14,18 @@
     "android": {
       "package": "com.cwlc.crew"
     },
-    "plugins": ["expo-router", "expo-font"],
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Crew uses the camera so you can take before and after photos of a job for the office.",
+          "photosPermission": "Crew lets you attach job photos from your library for the office.",
+          "microphonePermission": false
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     }

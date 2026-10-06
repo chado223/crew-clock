@@ -59,6 +59,16 @@ const MESSAGES: Record<string, string> = {
   alert_not_found: "That weather alert no longer exists.",
   alert_closed: "Someone already handled this weather alert.",
   invalid_action: "That action isn't available here.",
+  invalid_photo_path: "That photo doesn't belong to this visit.",
+  photo_not_uploaded: "The photo didn't finish uploading. Try again.",
+  invalid_kind: "Pick before, after or problem.",
+  route_mismatch: "The stop list changed. Reload and try again.",
+  invalid_template: "That message type doesn't exist.",
+  subject_required: "Email messages need a subject.",
+  live_messaging_not_enabled: "Real customer messages aren't switched on yet.",
+  message_not_queued: "That message already went out or was stopped.",
+  invalid_link: "That link isn't valid.",
+  invalid_channel: "Pick email or text.",
 };
 
 /** Map a Supabase/Postgres error to a message a person can act on. */

@@ -50,3 +50,7 @@
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .choice { display: flex; gap: 10px; align-items: flex-start; font-weight: 500; }
 .choice input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--turf); flex: none; }
+.historyItem { display: grid !important; gap: 10px; }
+.photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.photo { display: grid; gap: 4px; color: var(--ink-soft) !important; font-size: 0.88rem; text-decoration: none; }
+.photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: var(--line); }

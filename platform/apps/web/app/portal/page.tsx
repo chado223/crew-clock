@@ -116,7 +116,7 @@ export default async function PortalHome() {
       </section>
 
       <p className={styles.muted}>
-        Need something else done? <Link href="/portal/request">Request service</Link>.
+        <Link href="/portal/history">Full service history and photos</Link>. Need something else done? <Link href="/portal/request">Request service</Link>.
       </p>
     </>
   );

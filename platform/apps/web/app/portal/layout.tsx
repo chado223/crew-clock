@@ -49,6 +49,7 @@ export default async function PortalLayout({ children }: { children: React.React
       {account && (
         <nav className={styles.nav} aria-label="Account">
           <Link href="/portal">Overview</Link>
+          <Link href="/portal/history">History</Link>
           <Link href="/portal/estimates">Estimates</Link>
           <Link href="/portal/invoices">Invoices</Link>
           <Link href="/portal/request">Request service</Link>

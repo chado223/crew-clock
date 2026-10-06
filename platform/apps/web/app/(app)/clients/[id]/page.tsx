@@ -148,6 +148,19 @@ async function savePreferences(formData: FormData) {
   redirect(`/clients/${id}${error ? `?error=${encodeURIComponent(friendlyError(error))}` : ""}`);
 }
 
+async function photoAction(formData: FormData) {
+  "use server";
+  const id = String(formData.get("client_id"));
+  const photo = String(formData.get("photo_id"));
+  const supabase = await supabaseServer();
+  const action = String(formData.get("action"));
+  const { error } = action === "hide"
+    ? await supabase.rpc("hide_visit_photo", { p_photo_id: photo, p_hidden: true })
+    : await supabase.rpc("set_photo_visibility", { p_photo_id: photo, p_customer_visible: action === "share" });
+  revalidatePath(`/clients/${id}`);
+  redirect(`/clients/${id}${error ? `?error=${encodeURIComponent(friendlyError(error))}` : ""}#photos`);
+}
+
 async function revokePortal(formData: FormData) {
   "use server";
   const id = String(formData.get("client_id"));
@@ -213,6 +226,15 @@ export default async function ClientPage({
     supabase.from("contact_preferences").select("email_ok, sms_ok, sms_consent_at, sms_consent_source, kinds_off, unsubscribed_at").eq("client_id", id).maybeSingle(),
   ]);
   const messages = (msgs ?? []) as unknown as MessageRow[];
+  const { data: photoRows } = await supabase.from("visit_photos")
+    .select("id, kind, caption, storage_path, customer_visible, taken_at, visits(scheduled_date)")
+    .eq("client_id", id).is("hidden_at", null).order("taken_at", { ascending: false }).limit(24);
+  const photos = (photoRows ?? []) as unknown as { id: string; kind: string; caption: string | null; storage_path: string;
+    customer_visible: boolean; taken_at: string; visits: { scheduled_date: string } | null }[];
+  const { data: signedPhotos } = photos.length
+    ? await supabase.storage.from("visit-photos").createSignedUrls(photos.map((p) => p.storage_path), 3600)
+    : { data: [] as { path: string | null; signedUrl: string }[] };
+  const photoUrl = (path: string): string | undefined => signedPhotos?.find((x) => x.path === path)?.signedUrl ?? undefined;
   const pref = (prefRow as { email_ok: boolean; sms_ok: boolean; sms_consent_at: string | null; sms_consent_source: string | null; kinds_off: string[]; unsubscribed_at: string | null } | null)
     ?? { email_ok: true, sms_ok: false, sms_consent_at: null, sms_consent_source: null, kinds_off: [], unsubscribed_at: null };
   const nextVisit = new Map<string, string>();
@@ -384,6 +406,38 @@ export default async function ClientPage({
                         <option value="closed">Closed</option>
                       </select>
                       <button type="submit" className="button quiet">Update</button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {photos.length > 0 && (
+            <section aria-labelledby="photos" id="photos" className={styles.section}>
+              <h2 id="photos-h">Photos</h2>
+              <p className={styles.small}>Taken by crews. Customers only see the ones you share.</p>
+              <ul className={styles.photoGrid}>
+                {photos.map((p) => (
+                  <li key={p.id}>
+                    {photoUrl(p.storage_path) ? (
+                      <a href={photoUrl(p.storage_path)} target="_blank" rel="noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={photoUrl(p.storage_path)} alt={p.caption ?? `${p.kind} photo`} loading="lazy" />
+                      </a>
+                    ) : <span className={styles.photoMissing} />}
+                    <span className={styles.small}>
+                      {p.kind === "issue" ? "Problem" : p.kind === "before" ? "Before" : p.kind === "after" ? "After" : "Photo"}
+                      {p.visits?.scheduled_date ? `, ${shortDate(p.visits.scheduled_date)}` : ""}
+                      {p.customer_visible ? " · shared" : ""}
+                    </span>
+                    <form action={photoAction} className={styles.photoActions}>
+                      <input type="hidden" name="client_id" value={client.id} />
+                      <input type="hidden" name="photo_id" value={p.id} />
+                      <button type="submit" name="action" value={p.customer_visible ? "unshare" : "share"} className={styles.linkButton}>
+                        {p.customer_visible ? "Stop sharing" : "Share with customer"}
+                      </button>
+                      <button type="submit" name="action" value="hide" className={styles.textButton}>Hide</button>
                     </form>
                   </li>
                 ))}
