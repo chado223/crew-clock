@@ -82,6 +82,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <Link href="/messages">Messages</Link>
               </li>
               <li>
+                <Link href="/expenses">Expenses</Link>
+              </li>
+              <li>
                 <Link href="/insights">Business health</Link>
               </li>
               <li>
@@ -92,6 +95,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </li>
               <li>
                 <Link href="/export">Import & export</Link>
+              </li>
+              <li>
+                <Link href="/settings">Settings</Link>
               </li>
             </>
           )}

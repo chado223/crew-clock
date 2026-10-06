@@ -6,6 +6,8 @@ import { formatMoney, friendlyError } from "@crew/shared";
 import { currentCompany, isManager } from "@/lib/company";
 import { supabaseServer } from "@/lib/supabase/server";
 import { describeMessage, MESSAGE_COLUMNS, type MessageRow } from "@/lib/messages";
+import { companyProfile, Letterhead } from "@/components/letterhead";
+import { PrintButton } from "@/components/print-button";
 import styles from "../../money.module.css";
 
 export const metadata: Metadata = { title: "Invoice" };
@@ -51,6 +53,34 @@ async function removeLine(formData: FormData) {
   back(id, error);
 }
 
+async function addCharge(formData: FormData) {
+  "use server";
+  const { company } = await currentCompany();
+  const id = String(formData.get("id"));
+  const qty = Number(formData.get("quantity") || 1);
+  const price = Number(formData.get("unit_price"));
+  const description = String(formData.get("description") ?? "").trim();
+  if (!description || !Number.isFinite(price) || !Number.isFinite(qty) || qty <= 0) back(id, "Enter a description, quantity and price.");
+  const { error } = await (await supabaseServer()).from("invoice_lines").insert({
+    tenant_id: company.tenant_id, invoice_id: id, description, quantity: qty, unit_price: price, sort_order: 1000,
+  });
+  back(id, error);
+}
+
+async function voidInvoice(formData: FormData) {
+  "use server";
+  const id = String(formData.get("id"));
+  const { error } = await (await supabaseServer()).rpc("void_invoice", { p_invoice_id: id, p_reason: String(formData.get("reason") ?? "") } as never);
+  back(id, error);
+}
+
+async function voidPayment(formData: FormData) {
+  "use server";
+  const id = String(formData.get("id"));
+  const { error } = await (await supabaseServer()).rpc("void_payment", { p_payment_id: String(formData.get("payment_id")), p_reason: String(formData.get("reason") ?? "") } as never);
+  back(id, error);
+}
+
 async function setTax(formData: FormData) {
   "use server";
   const id = String(formData.get("id"));
@@ -84,6 +114,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   const { data: lastMsg } = await (await supabaseServer()).from("messages").select(MESSAGE_COLUMNS)
     .eq("subject_type", "invoice").eq("subject_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle();
   const lastMessage = lastMsg as unknown as MessageRow | null;
+  const profile = await companyProfile(company.tenant_id);
 
   return (
     <div className={styles.page}>
@@ -96,7 +127,10 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
         </p>
       )}
 
+      <div className="noPrint" style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}><PrintButton /></div>
       <article className={styles.doc}>
+        <Letterhead p={profile} />
+        {inv.status === "void" && <p className="error-text">VOID{inv.void_reason ? `: ${inv.void_reason}` : ""}</p>}
         <div className={styles.docHead}>
           <div>
             <p className={styles.docNumber}>{inv.number ?? "Invoice"}</p>
@@ -198,6 +232,19 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
         </section>
       )}
 
+      {inv.status === "draft" && (
+        <section className={`${styles.panel} noPrint`} aria-labelledby="charge">
+          <h2 id="charge">Add a charge</h2>
+          <form action={addCharge} className={styles.form}>
+            <input type="hidden" name="id" value={inv.id} />
+            <div className="field"><label htmlFor="desc">Description</label><input id="desc" name="description" required className="input" placeholder="e.g. Mulch, 3 bags" /></div>
+            <div className="field"><label htmlFor="qty">Quantity</label><input id="qty" name="quantity" type="number" min={0.01} step="0.01" defaultValue={1} className="input" /></div>
+            <div className="field"><label htmlFor="up">Price each ($)</label><input id="up" name="unit_price" type="number" step="0.01" required className="input" /></div>
+            <button className="button quiet" type="submit">Add charge</button>
+          </form>
+        </section>
+      )}
+
       {(payments ?? []).length > 0 && (
         <section className="noPrint" aria-labelledby="payments">
           <h2 id="payments">Payments</h2>
@@ -208,10 +255,29 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
                 <span style={{ textTransform: "capitalize" }}>{p.method}{p.reference ? `, ${p.reference}` : ""}</span>
                 <span />
                 <span className={styles.num}>{formatMoney(p.amount)}</span>
+                <form action={voidPayment} className={styles.inline}>
+                  <input type="hidden" name="id" value={inv.id} />
+                  <input type="hidden" name="payment_id" value={p.id} />
+                  <label className="srOnly" htmlFor={`vr-${p.id}`}>Reason</label>
+                  <input id={`vr-${p.id}`} name="reason" required className="input" placeholder="Reason to void" />
+                  <button className={styles.remove} type="submit">Void payment</button>
+                </form>
               </li>
             ))}
           </ul>
         </section>
+      )}
+
+      {inv.status !== "void" && (
+        <details className="noPrint">
+          <summary style={{ cursor: "pointer", color: "var(--error)", fontWeight: 600 }}>Void this invoice</summary>
+          <form action={voidInvoice} className={styles.form}>
+            <input type="hidden" name="id" value={inv.id} />
+            <div className="field"><label htmlFor="void-r">Reason</label><input id="void-r" name="reason" required className="input" placeholder="e.g. Billed the wrong customer" /></div>
+            <button className="button quiet" type="submit">Void invoice</button>
+          </form>
+          <p className="hint">The invoice is kept and marked void. Its visits can be billed again. Void any payments on it first.</p>
+        </details>
       )}
     </div>
   );
