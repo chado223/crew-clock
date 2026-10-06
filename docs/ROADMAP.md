@@ -13,10 +13,20 @@ Built and tested on staging (open PRs, stacked; nothing merged or deployed to pr
 | PR | What | Tests |
 |---|---|---|
 | #1–#7 | Audit + Flask hotfix, foundation, time clock, onboarding, CRM, jobs/visits/scheduling, job costing, estimates/invoices | db + staging |
-| #8 | Customer portal (database-enforced customer isolation) | 58 portal security assertions |
-| #9 | Weather (NWS): company rules, alerts, office decisions, worker, live staging e2e | 63 + unit + live e2e |
-| next | Routes: yards, ordered stops, free straight-line planner behind a provider interface, map handoff on web and phone | 25 + unit |
-| next | Communications: test-mode-by-default outbox, two live locks, templates, preferences, workflows, dispatcher, staff and portal screens | 70 + unit + staging e2e |
+| #8 | Customer portal (database-enforced customer isolation) | 58 |
+| #9 | Weather (NWS) with live staging e2e | 63 + unit + e2e |
+| #10 | Routes behind a provider interface | 25 + unit |
+| #11 | Communications: test-mode outbox, two live locks | 70 + unit + e2e |
+| #12 | Owner command center + business health | 56 |
+| #13 | Visit photos, portal history, online-payments model (off) | 48 |
+| #14 | Readiness-audit fixes (security, consistency, money controls) | 30+ |
+| #15 | Editing customers/properties/jobs, schedule actions, auto-fill | 20 |
+| #16 | CSV import (preview) and exports | 21 + unit |
+| #17 | Billing: invoice everyone, charges, voids, letterhead, settings, expenses | 12 |
+| #18 | Team admin; crew breaks, problem reports; phone works offline | 10 |
+| #19 | Ops: lockfile + npm ci, staging backups, **tested emergency revert** | revert check |
+
+Product-readiness audit (2026-10-06): see the owner's doc "Crew Clock product-readiness audit". All development findings fixed; owner decisions listed there.
 
 Waiting on owner decisions: production migrations and cutover, hosting (Vercel/Supabase Pro), email/SMS provider and enabling live messaging, paid routing provider, Apple Developer account.
 

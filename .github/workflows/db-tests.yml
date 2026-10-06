@@ -25,7 +25,13 @@ jobs:
       PGPASSWORD: postgres
     steps:
       - uses: actions/checkout@v5
-      - name: Install psql client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+      - name: Install psql/pg_dump 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
       - name: Run migrations + tests (upgrade and fresh scenarios)
         run: bash platform/supabase/tests/run.sh
+      - name: Emergency revert script returns production's starting point exactly
+        run: bash platform/supabase/tests/revert/check_revert.sh

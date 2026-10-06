@@ -1,0 +1,43 @@
+name: Lockfile (keep platform/package-lock.json current)
+
+# The sandbox that develops this repo can't reach the npm registry, so CI
+# writes the lockfile and commits it back to the branch. Installs everywhere
+# else then use `npm ci` against exactly what was tested.
+
+on:
+  push:
+    branches: ["phase-*"]
+    paths: ["platform/package.json", "platform/apps/*/package.json", "platform/packages/*/package.json", ".github/workflows/lockfile.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lockfile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Resolve dependencies into the lockfile
+        run: npm install --package-lock-only --no-audit --no-fund
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- package-lock.json && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
+            echo "::notice title=lockfile::unchanged"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "Update platform/package-lock.json (generated in CI)"
+          git push
+          echo "::notice title=lockfile::committed"

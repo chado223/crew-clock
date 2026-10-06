@@ -1,0 +1,44 @@
+name: Staging backup (nightly pg_dump)
+
+# Rehearses the backup the production runbook relies on, against staging.
+# Scheduled runs happen from the default branch only. Free GitHub artifacts,
+# kept 14 days. Targets ONLY crew-clock-staging.
+
+on:
+  schedule:
+    - cron: "43 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.STAGING_DB_URL }}
+    steps:
+      - name: Guard
+        run: |
+          case "$DB_URL" in
+            *newivmnolbzhjypusmob*) echo "Target: crew-clock-staging";;
+            *) echo "::error::Not the staging project. Refusing."; exit 1;;
+          esac
+      - name: Install pg_dump 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+      - name: Dump
+        run: |
+          stamp=$(date -u +%Y%m%dT%H%MZ)
+          pg_dump "$DB_URL" -n public -n private -n storage -n supabase_migrations -Fc -f "staging-$stamp.dump"
+          pg_dump "$DB_URL" -n public -n private --schema-only -f "staging-schema-$stamp.sql"
+          ls -la
+          echo "::notice title=backup::$(du -h staging-$stamp.dump | cut -f1) dump written"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: staging-backup
+          path: staging-*
+          retention-days: 14
