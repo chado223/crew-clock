@@ -47,7 +47,24 @@
 .num { text-align: right !important; }
 .table td.num { font-size: 1.15rem; }
 
+.overview { display: grid; gap: 14px; }
+.headline { font-size: 1.6rem; line-height: 1.35; font-weight: 500; max-width: 40ch; }
+.headline :global(.figure) { font-size: 2rem; font-weight: 600; color: var(--turf); }
+.money { color: var(--ink-soft); max-width: 75ch; }
+.crewBars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-width: 560px; }
+.crewBars li { display: grid; grid-template-columns: minmax(90px, 160px) 1fr auto; gap: 12px; align-items: center; }
+.bar { height: 10px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--turf); border-radius: 999px; }
+.todos { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius-panel); }
+.todos li { border-bottom: 1px solid var(--line); border-left: 4px solid transparent; }
+.todos li:last-child { border-bottom: 0; }
+.todos li.urgent { border-left-color: var(--error); }
+.todos a { display: block; padding: 14px 18px; color: var(--ink); text-decoration: none; font-weight: 500; }
+.todos a:hover { background: #eef2eb; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
 @media (max-width: 760px) {
+  .headline { font-size: 1.3rem; }
   .onClock { padding: 18px; }
   .elapsed { font-size: 2rem; }
   .table th, .table td { padding: 10px 12px; }
