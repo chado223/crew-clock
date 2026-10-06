@@ -177,7 +177,7 @@ revoke all on public.weather_settings, public.weather_points, public.weather_for
 grant select on public.weather_settings, public.weather_points, public.weather_forecasts, public.weather_alerts to authenticated;
 grant insert (tenant_id, enabled, rain_chance_pct, wind_mph, min_temp_f, max_temp_f, lookahead_days, on_alert)
   on public.weather_settings to authenticated;
-grant update (tenant_id, enabled, rain_chance_pct, wind_mph, min_temp_f, max_temp_f, lookahead_days, on_alert)
+grant update (enabled, rain_chance_pct, wind_mph, min_temp_f, max_temp_f, lookahead_days, on_alert)
   on public.weather_settings to authenticated;
 grant all on public.weather_settings, public.weather_points, public.weather_forecasts, public.weather_alerts to service_role;
 
@@ -292,7 +292,7 @@ begin
   perform private.require_manager(a.tenant_id);
   if p_action not in ('acknowledge','dismiss','move') then raise exception 'invalid_action' using errcode = '22023'; end if;
   if a.status not in ('open','acknowledged') then raise exception 'alert_closed' using errcode = '22023'; end if;
-  if p_note is not null and length(p_note) > 2000 then raise exception 'note_too_long' using errcode = '22023'; end if;
+  if p_note is not null and length(p_note) > 500 then raise exception 'note_too_long' using errcode = '22023'; end if;
 
   if p_action = 'move' then
     if p_new_date is null or p_new_date = a.forecast_date then raise exception 'date_required' using errcode = '22023'; end if;
