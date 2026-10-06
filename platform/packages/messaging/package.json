@@ -1,0 +1,22 @@
+{
+  "name": "@crew/messaging",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Server-side message dispatcher: outbox -> email/SMS providers (log-only until a provider is approved).",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "run": "node src/cli.ts run"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "typescript": "~5.9.2"
+  }
+}
