@@ -28,7 +28,7 @@ export default async function History() {
   const pics = (photos ?? []) as P[];
   // Short-lived links, issued with the customer's own session: storage re-checks access for each file.
   const { data: signed } = pics.length
-    ? await supabase.storage.from("visit-photos").createSignedUrls(pics.map((p) => p.storage_path), 3600)
+    ? await supabase.storage.from("visit-photos").createSignedUrls(pics.map((p) => p.storage_path), 300)
     : { data: [] as { path: string | null; signedUrl: string }[] };
   const url = (path: string): string | undefined => signed?.find((s) => s.path === path)?.signedUrl ?? undefined;
 

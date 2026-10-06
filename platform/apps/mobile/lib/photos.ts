@@ -23,7 +23,7 @@ export async function loadVisitPhotos(visitId: string): Promise<VisitPhoto[]> {
     .order("taken_at");
   const rows = (data ?? []) as VisitPhoto[];
   if (!rows.length) return rows;
-  const { data: signed } = await supabase.storage.from("visit-photos").createSignedUrls(rows.map((r) => r.storage_path), 3600);
+  const { data: signed } = await supabase.storage.from("visit-photos").createSignedUrls(rows.map((r) => r.storage_path), 600);
   return rows.map((r) => ({ ...r, url: signed?.find((s) => s.path === r.storage_path)?.signedUrl ?? undefined }));
 }
 

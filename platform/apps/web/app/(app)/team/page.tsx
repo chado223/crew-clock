@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { friendlyError } from "@crew/shared";
 import { currentCompany, isManager } from "@/lib/company";
 import { supabaseServer } from "@/lib/supabase/server";
 import { siteOrigin } from "@/lib/origin";
+import { readFlash, setFlash } from "@/lib/flash";
 import styles from "./team.module.css";
 
 export const metadata: Metadata = { title: "Team" };
@@ -22,13 +22,15 @@ async function invite(formData: FormData) {
   });
   if (error) redirect(`/team?error=${encodeURIComponent(friendlyError(error))}`);
   // Queue the invite email (test mode: it goes to the company's test address only).
-  await supabase.rpc("send_invite_message", {
+  const { error: mailError } = await supabase.rpc("send_invite_message", {
     p_tenant_id: company.tenant_id,
     p_kind: "team_invite",
     p_to: String(formData.get("email") ?? ""),
     p_link: `${await siteOrigin()}/invite/${String(token)}`,
   });
-  redirect(`/team?invited=${encodeURIComponent(String(token))}`);
+  if (mailError) console.error("[team] invite email not queued:", mailError.message);
+  await setFlash("invite", String(token), "/team");
+  redirect("/team?invited=1");
 }
 
 async function createCrew(formData: FormData) {
@@ -110,9 +112,8 @@ export default async function TeamPage({
   for (const r of rates ?? []) if (r.effective_from <= today && !currentRate.has(r.employee_id)) currentRate.set(r.employee_id, Number(r.hourly_rate));
   const roleOf = new Map((members ?? []).map((m) => [m.user_id as string, m.role as string]));
 
-  const host = (await headers()).get("host");
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${host}`;
-  const inviteLink = invited ? `${origin}/invite/${invited}` : null;
+  const flashToken = invited ? await readFlash("invite") : null;
+  const inviteLink = flashToken ? `${await siteOrigin()}/invite/${flashToken}` : null;
 
   return (
     <div className={styles.page}>
