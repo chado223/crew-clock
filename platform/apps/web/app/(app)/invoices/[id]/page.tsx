@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { formatMoney, friendlyError } from "@crew/shared";
 import { currentCompany, isManager } from "@/lib/company";
 import { supabaseServer } from "@/lib/supabase/server";
+import { describeMessage, MESSAGE_COLUMNS, type MessageRow } from "@/lib/messages";
 import styles from "../../money.module.css";
 
 export const metadata: Metadata = { title: "Invoice" };
@@ -20,6 +21,14 @@ async function markSent(formData: FormData) {
   const id = String(formData.get("id"));
   const { error } = await (await supabaseServer()).rpc("mark_invoice_sent", { p_invoice_id: id });
   back(id, error);
+}
+
+async function send(formData: FormData) {
+  "use server";
+  const id = String(formData.get("id"));
+  const { error } = await (await supabaseServer()).rpc("send_invoice", { p_invoice_id: id, p_channel: String(formData.get("channel") ?? "email") });
+  if (error) back(id, error);
+  redirect(`/invoices/${id}?sent=1`);
 }
 
 async function recordPayment(formData: FormData) {
@@ -52,11 +61,11 @@ async function setTax(formData: FormData) {
   back(id, error);
 }
 
-export default async function InvoicePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
+export default async function InvoicePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; sent?: string }> }) {
   const { company } = await currentCompany();
   if (!isManager(company)) redirect("/");
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, sent } = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
   const supabase = await supabaseServer();
@@ -72,10 +81,20 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     iso ? new Intl.DateTimeFormat("en-US", { timeZone: company.timezone, month: "long", day: "numeric", year: "numeric" }).format(new Date(iso)) : "";
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: company.timezone }).format(new Date());
 
+  const { data: lastMsg } = await (await supabaseServer()).from("messages").select(MESSAGE_COLUMNS)
+    .eq("subject_type", "invoice").eq("subject_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const lastMessage = lastMsg as unknown as MessageRow | null;
+
   return (
     <div className={styles.page}>
       <Link href="/invoices" className="noPrint">All invoices</Link>
       {error && <p className="error-text" role="alert">{error}</p>}
+      {lastMessage && (
+        <p className={`notice noPrint`} role="status">
+          {sent ? "Sent to the outbox. " : "Last message: "}{describeMessage(lastMessage)}{" "}
+          <Link href="/messages">Messages</Link>
+        </p>
+      )}
 
       <article className={styles.doc}>
         <div className={styles.docHead}>
@@ -134,16 +153,26 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
               <div className="field"><label htmlFor="tax">Sales tax (%)</label><input id="tax" name="tax_percent" type="number" min={0} max={99} step="0.001" defaultValue={(Number(inv.tax_rate) * 100).toString()} className="input" /></div>
               <button className="button quiet" type="submit">Update tax</button>
             </form>
+            <form action={send}>
+              <input type="hidden" name="id" value={inv.id} />
+              <button className="button" type="submit" name="channel" value="email">Email to customer</button>
+            </form>
             <form action={markSent}>
               <input type="hidden" name="id" value={inv.id} />
-              <button className="button" type="submit">Mark as sent</button>
+              <button className="button quiet" type="submit">Mark sent (I sent it myself)</button>
             </form>
           </>
+        )}
+        {["sent", "partial", "overdue"].includes(inv.status) && (
+          <form action={send}>
+            <input type="hidden" name="id" value={inv.id} />
+            <button className="button quiet" type="submit" name="channel" value="email">Email again</button>
+          </form>
         )}
         {client && <Link href={`/clients/${client.id}`} className="button quiet">Customer record</Link>}
       </div>
       {inv.status === "draft" && (
-        <p className={`${styles.empty} noPrint`}>Marking as sent locks the lines. Emailing invoices to customers comes later; for now print or save as PDF from your browser.</p>
+        <p className={`${styles.empty} noPrint`}>Sending locks the lines. Emails follow your message settings (test mode sends only to your test address). You can also print or save as PDF.</p>
       )}
 
       {["sent", "partial", "overdue"].includes(inv.status) && (

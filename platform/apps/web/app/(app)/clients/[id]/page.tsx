@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { friendlyError } from "@crew/shared";
 import { currentCompany, isManager } from "@/lib/company";
 import { supabaseServer } from "@/lib/supabase/server";
+import { siteOrigin } from "@/lib/origin";
+import { describeMessage, MESSAGE_COLUMNS, TEMPLATE_LABEL, type MessageRow } from "@/lib/messages";
 import styles from "./client.module.css";
 
 export const metadata: Metadata = { title: "Customer" };
@@ -105,12 +107,45 @@ async function addJob(formData: FormData) {
 async function invitePortal(formData: FormData) {
   "use server";
   const id = String(formData.get("client_id"));
-  const { data, error } = await (await supabaseServer()).rpc("invite_customer", {
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.rpc("invite_customer", {
     p_client_id: id,
     p_email: String(formData.get("email") ?? ""),
   });
+  if (!error) {
+    const { company } = await currentCompany();
+    await supabase.rpc("send_invite_message", {
+      p_tenant_id: company.tenant_id,
+      p_kind: "portal_invite",
+      p_to: String(formData.get("email") ?? ""),
+      p_link: `${await siteOrigin()}/portal/join/${String(data)}`,
+      p_client_id: id,
+    });
+  }
   revalidatePath(`/clients/${id}`);
   redirect(`/clients/${id}?${error ? `error=${encodeURIComponent(friendlyError(error))}` : `portal_invite=${encodeURIComponent(String(data))}`}`);
+}
+
+async function savePreferences(formData: FormData) {
+  "use server";
+  const { company } = await currentCompany();
+  const id = String(formData.get("client_id"));
+  const sms = formData.get("sms_ok") === "on";
+  const off = ["visit_reminder", "invoice_reminder"].filter((k) => formData.get(`kind_${k}`) !== "on");
+  const { error } = await (await supabaseServer()).from("contact_preferences").upsert(
+    {
+      tenant_id: company.tenant_id,
+      client_id: id,
+      email_ok: formData.get("email_ok") === "on",
+      sms_ok: sms,
+      sms_consent_source: sms ? String(formData.get("sms_consent_source") ?? "").trim() || "office" : null,
+      kinds_off: off,
+      unsubscribed_at: formData.get("unsubscribed") === "on" ? new Date().toISOString() : null,
+    },
+    { onConflict: "client_id" },
+  );
+  revalidatePath(`/clients/${id}`);
+  redirect(`/clients/${id}${error ? `?error=${encodeURIComponent(friendlyError(error))}` : ""}`);
 }
 
 async function revokePortal(formData: FormData) {
@@ -173,6 +208,13 @@ export default async function ClientPage({
     supabase.from("portal_access").select("id, status, created_at, user_id").eq("client_id", id).eq("status", "active"),
     supabase.from("service_requests").select("id, details, preferred_date, status, created_at").eq("client_id", id).neq("status", "closed").order("created_at", { ascending: false }),
   ]);
+  const [{ data: msgs }, { data: prefRow }] = await Promise.all([
+    supabase.from("messages").select(MESSAGE_COLUMNS).eq("client_id", id).order("created_at", { ascending: false }).limit(10),
+    supabase.from("contact_preferences").select("email_ok, sms_ok, sms_consent_at, sms_consent_source, kinds_off, unsubscribed_at").eq("client_id", id).maybeSingle(),
+  ]);
+  const messages = (msgs ?? []) as unknown as MessageRow[];
+  const pref = (prefRow as { email_ok: boolean; sms_ok: boolean; sms_consent_at: string | null; sms_consent_source: string | null; kinds_off: string[]; unsubscribed_at: string | null } | null)
+    ?? { email_ok: true, sms_ok: false, sms_consent_at: null, sms_consent_source: null, kinds_off: [], unsubscribed_at: null };
   const nextVisit = new Map<string, string>();
   for (const v of upcoming ?? []) if (!nextVisit.has(v.job_id)) nextVisit.set(v.job_id, v.scheduled_date);
   const shortDate = (ymd: string) =>
@@ -349,6 +391,39 @@ export default async function ClientPage({
             </section>
           )}
 
+          <section aria-labelledby="msgs" className={styles.section}>
+            <h2 id="msgs">Messages</h2>
+            {messages.length === 0 ? (
+              <p className={styles.small}>Nothing sent yet.</p>
+            ) : (
+              <ul className={styles.props}>
+                {messages.map((m) => (
+                  <li key={m.id}>
+                    <span className={styles.addr}>{TEMPLATE_LABEL[m.template_key] ?? m.template_key}</span>{" "}
+                    <span className={styles.small}>{m.channel === "sms" ? "text" : "email"}, {day(m.created_at)}</span>
+                    <p className={styles.small}>{describeMessage(m)}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <details className={styles.addProp}>
+              <summary>Contact preferences</summary>
+              <form action={savePreferences} className={styles.propForm}>
+                <input type="hidden" name="client_id" value={client.id} />
+                <label className={styles.checkRow}><input type="checkbox" name="email_ok" defaultChecked={pref.email_ok} /> Email is OK</label>
+                <label className={styles.checkRow}><input type="checkbox" name="sms_ok" defaultChecked={pref.sms_ok} /> Customer agreed to texts</label>
+                <div className="field">
+                  <label htmlFor="sms_src">How they agreed</label>
+                  <input id="sms_src" name="sms_consent_source" className="input" defaultValue={pref.sms_consent_source ?? ""} placeholder="e.g. said yes on the phone, signed form" />
+                </div>
+                <label className={styles.checkRow}><input type="checkbox" name="kind_visit_reminder" defaultChecked={!pref.kinds_off.includes("visit_reminder")} /> Visit reminders</label>
+                <label className={styles.checkRow}><input type="checkbox" name="kind_invoice_reminder" defaultChecked={!pref.kinds_off.includes("invoice_reminder")} /> Payment reminders</label>
+                <label className={styles.checkRow}><input type="checkbox" name="unsubscribed" defaultChecked={!!pref.unsubscribed_at} /> Stop all messages</label>
+                <button type="submit" className="button quiet">Save preferences</button>
+              </form>
+            </details>
+          </section>
+
           <section aria-labelledby="portal" className={styles.section}>
             <h2 id="portal">Customer portal</h2>
             <p className={styles.small}>
@@ -358,7 +433,7 @@ export default async function ClientPage({
             </p>
             {portal_invite && (
               <div className="notice">
-                <p>Send this link to the customer. It works once, for that email, for 14 days.</p>
+                <p>Invite queued in Messages (test mode sends it to your test address). You can also send this link yourself. It works once, for that email, for 14 days.</p>
                 <input readOnly className="input" style={{ width: "100%", marginTop: 8 }} aria-label="Portal invite link"
                   value={`${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/portal/join/${portal_invite}`} />
               </div>

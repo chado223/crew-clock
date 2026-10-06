@@ -1,4 +1,4 @@
-name: Weather (NWS live check + staging end-to-end)
+name: Automation on staging (weather + messages)
 
 # Proves the weather worker against the real National Weather Service and the
 # free Census geocoder, then runs a full pass on crew-clock-staging inside a
@@ -8,7 +8,7 @@ name: Weather (NWS live check + staging end-to-end)
 on:
   push:
     branches: [main, "phase-*"]
-    paths: ["platform/packages/weather/**", "platform/supabase/migrations/**", ".github/workflows/weather-staging.yml"]
+    paths: ["platform/packages/weather/**", "platform/packages/messaging/**", "platform/supabase/migrations/**", ".github/workflows/weather-staging.yml"]
   workflow_dispatch:
   schedule:
     - cron: "17 10 * * *"   # daily, early morning US Eastern (runs from the default branch only)
@@ -62,4 +62,36 @@ jobs:
       - name: End-to-end on staging (rolled back)
         if: env.DB_URL != ''
         working-directory: ${{ runner.temp }}/weather
+        run: node src/cli.ts e2e
+
+  messages:
+    needs: weather   # same staging database; run one after the other
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.STAGING_DB_URL }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install (isolated)
+        run: |
+          cp -r platform/packages/messaging "$RUNNER_TEMP/messaging"
+          cd "$RUNNER_TEMP/messaging" && npm install --no-audit --no-fund
+      - name: Unit tests + typecheck
+        working-directory: ${{ runner.temp }}/messaging
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/unit.txt || { grep -E "not ok|Error" /tmp/unit.txt | head -20 | sed 's/^/::error title=messages-unit::/'; exit 1; }
+          npx tsc --noEmit -p . 2>&1 | tee /tmp/tsc.txt || { grep "error TS" /tmp/tsc.txt | head -20 | sed 's/^/::error title=messages-tsc::/'; exit 1; }
+      - name: Guard against production
+        if: env.DB_URL != ''
+        run: |
+          case "$DB_URL" in
+            *newivmnolbzhjypusmob*) echo "Target: crew-clock-staging";;
+            *) echo "::error::STAGING_DB_URL is not the crew-clock-staging project. Refusing."; exit 1;;
+          esac
+      - name: End-to-end on staging (rolled back, log provider only)
+        if: env.DB_URL != ''
+        working-directory: ${{ runner.temp }}/messaging
         run: node src/cli.ts e2e

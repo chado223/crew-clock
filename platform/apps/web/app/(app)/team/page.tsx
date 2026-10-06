@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { friendlyError } from "@crew/shared";
 import { currentCompany, isManager } from "@/lib/company";
 import { supabaseServer } from "@/lib/supabase/server";
+import { siteOrigin } from "@/lib/origin";
 import styles from "./team.module.css";
 
 export const metadata: Metadata = { title: "Team" };
@@ -20,6 +21,13 @@ async function invite(formData: FormData) {
     p_display_name: String(formData.get("name") ?? "") || undefined,
   });
   if (error) redirect(`/team?error=${encodeURIComponent(friendlyError(error))}`);
+  // Queue the invite email (test mode: it goes to the company's test address only).
+  await supabase.rpc("send_invite_message", {
+    p_tenant_id: company.tenant_id,
+    p_kind: "team_invite",
+    p_to: String(formData.get("email") ?? ""),
+    p_link: `${await siteOrigin()}/invite/${String(token)}`,
+  });
   redirect(`/team?invited=${encodeURIComponent(String(token))}`);
 }
 

@@ -23,6 +23,11 @@ jobs:
         run: npm run typecheck -w @crew/shared
       - name: Shared tests
         run: npm test -w @crew/shared
+      - name: Messaging dispatcher tests + typecheck
+        run: |
+          set -o pipefail
+          npm test -w @crew/messaging 2>&1 | tee /tmp/mt.txt || { grep -E "not ok|Error" /tmp/mt.txt | head -20 | sed 's/^/::error title=messages-unit::/'; exit 1; }
+          npm run typecheck -w @crew/messaging 2>&1 | tee /tmp/mtc.txt || { grep "error TS" /tmp/mtc.txt | head -20 | sed 's/^/::error title=messages-tsc::/'; exit 1; }
       - name: Weather worker tests + typecheck
         run: |
           set -o pipefail

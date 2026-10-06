@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { formatMoney, friendlyError } from "@crew/shared";
 import { currentCompany, isManager } from "@/lib/company";
 import { supabaseServer } from "@/lib/supabase/server";
+import { describeMessage, MESSAGE_COLUMNS, type MessageRow } from "@/lib/messages";
 import styles from "../../money.module.css";
 
 export const metadata: Metadata = { title: "Estimate" };
@@ -47,6 +48,14 @@ async function setStatus(formData: FormData) {
   back(id, error);
 }
 
+async function send(formData: FormData) {
+  "use server";
+  const id = String(formData.get("id"));
+  const { error } = await (await supabaseServer()).rpc("send_estimate", { p_estimate_id: id, p_channel: String(formData.get("channel") ?? "email") });
+  if (error) back(id, error);
+  redirect(`/estimates/${id}?sent=1`);
+}
+
 async function convert(formData: FormData) {
   "use server";
   const id = String(formData.get("id"));
@@ -70,11 +79,11 @@ const STATUS_NOTE: Record<string, string> = {
   expired: "This estimate expired.",
 };
 
-export default async function EstimatePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
+export default async function EstimatePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; sent?: string }> }) {
   const { company } = await currentCompany();
   if (!isManager(company)) redirect("/");
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, sent } = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
   const supabase = await supabaseServer();
@@ -91,10 +100,20 @@ export default async function EstimatePage({ params, searchParams }: { params: P
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: company.timezone }).format(new Date());
   const recurringTotal = (lines ?? []).filter((l) => l.repeat_every_weeks).reduce((n, l) => n + Number(l.amount), 0);
 
+  const { data: lastMsg } = await (await supabaseServer()).from("messages").select(MESSAGE_COLUMNS)
+    .eq("subject_type", "estimate").eq("subject_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const lastMessage = lastMsg as unknown as MessageRow | null;
+
   return (
     <div className={styles.page}>
       <Link href="/estimates" className="noPrint">All estimates</Link>
       {error && <p className="error-text" role="alert">{error}</p>}
+      {lastMessage && (
+        <p className={`notice noPrint`} role="status">
+          {sent ? "Sent to the outbox. " : "Last message: "}{describeMessage(lastMessage)}{" "}
+          <Link href="/messages">Messages</Link>
+        </p>
+      )}
 
       <article className={styles.doc}>
         <div className={styles.docHead}>
@@ -167,10 +186,14 @@ export default async function EstimatePage({ params, searchParams }: { params: P
       <div className={`${styles.actions} noPrint`}>
         <span className={`${styles.status} ${styles[`status_${est.status}`] ?? ""}`}>{est.status}</span>
         {draft && (
-          <form action={setStatus}><input type="hidden" name="id" value={est.id} /><input type="hidden" name="status" value="sent" /><button className="button" type="submit">Mark as sent</button></form>
+          <>
+            <form action={send}><input type="hidden" name="id" value={est.id} /><button className="button" type="submit" name="channel" value="email">Email to customer</button></form>
+            <form action={setStatus}><input type="hidden" name="id" value={est.id} /><input type="hidden" name="status" value="sent" /><button className="button quiet" type="submit">Mark sent (I sent it myself)</button></form>
+          </>
         )}
         {est.status === "sent" && (
           <>
+            <form action={send}><input type="hidden" name="id" value={est.id} /><button className="button quiet" type="submit" name="channel" value="email">Email again</button></form>
             <form action={setStatus}><input type="hidden" name="id" value={est.id} /><input type="hidden" name="status" value="approved" /><button className="button" type="submit">Customer approved</button></form>
             <form action={setStatus}><input type="hidden" name="id" value={est.id} /><input type="hidden" name="status" value="declined" /><button className="button quiet" type="submit">Customer declined</button></form>
           </>
