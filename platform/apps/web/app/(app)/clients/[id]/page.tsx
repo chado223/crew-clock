@@ -102,6 +102,36 @@ async function addJob(formData: FormData) {
   redirect(`/clients/${id}`);
 }
 
+async function invitePortal(formData: FormData) {
+  "use server";
+  const id = String(formData.get("client_id"));
+  const { data, error } = await (await supabaseServer()).rpc("invite_customer", {
+    p_client_id: id,
+    p_email: String(formData.get("email") ?? ""),
+  });
+  revalidatePath(`/clients/${id}`);
+  redirect(`/clients/${id}?${error ? `error=${encodeURIComponent(friendlyError(error))}` : `portal_invite=${encodeURIComponent(String(data))}`}`);
+}
+
+async function revokePortal(formData: FormData) {
+  "use server";
+  const id = String(formData.get("client_id"));
+  const { error } = await (await supabaseServer()).rpc("revoke_portal_access", { p_access_id: String(formData.get("access_id")) });
+  revalidatePath(`/clients/${id}`);
+  redirect(`/clients/${id}${error ? `?error=${encodeURIComponent(friendlyError(error))}` : ""}`);
+}
+
+async function updateRequest(formData: FormData) {
+  "use server";
+  const id = String(formData.get("client_id"));
+  const { error } = await (await supabaseServer())
+    .from("service_requests")
+    .update({ status: String(formData.get("status")) })
+    .eq("id", String(formData.get("request_id")));
+  revalidatePath(`/clients/${id}`);
+  redirect(`/clients/${id}${error ? `?error=${encodeURIComponent(friendlyError(error))}` : ""}`);
+}
+
 async function setStatus(formData: FormData) {
   "use server";
   const id = String(formData.get("client_id"));
@@ -118,12 +148,12 @@ export default async function ClientPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; portal_invite?: string }>;
 }) {
   const { company } = await currentCompany();
   if (!isManager(company)) redirect("/");
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, portal_invite } = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
   const supabase = await supabaseServer();
@@ -138,6 +168,10 @@ export default async function ClientPage({
     supabase.from("visits").select("id, scheduled_date, status, job_id").eq("client_id", id)
       .gte("scheduled_date", new Intl.DateTimeFormat("en-CA", { timeZone: company.timezone }).format(new Date()))
       .eq("status", "scheduled").order("scheduled_date").limit(8),
+  ]);
+  const [{ data: portalUsers }, { data: requests }] = await Promise.all([
+    supabase.from("portal_access").select("id, status, created_at, user_id").eq("client_id", id).eq("status", "active"),
+    supabase.from("service_requests").select("id, details, preferred_date, status, created_at").eq("client_id", id).neq("status", "closed").order("created_at", { ascending: false }),
   ]);
   const nextVisit = new Map<string, string>();
   for (const v of upcoming ?? []) if (!nextVisit.has(v.job_id)) nextVisit.set(v.job_id, v.scheduled_date);
@@ -284,6 +318,65 @@ export default async function ClientPage({
               <dt>Email</dt><dd>{client.email ? <a href={`mailto:${client.email}`}>{client.email}</a> : "None"}</dd>
               {client.company_name && (<><dt>Company</dt><dd>{client.company_name}</dd></>)}
             </dl>
+          </section>
+
+          {(requests ?? []).length > 0 && (
+            <section aria-labelledby="requests" className={styles.section}>
+              <h2 id="requests">Service requests</h2>
+              <ul className={styles.props}>
+                {(requests ?? []).map((r) => (
+                  <li key={r.id}>
+                    <p>{r.details}</p>
+                    <p className={styles.small}>
+                      {new Intl.DateTimeFormat("en-US", { timeZone: company.timezone, month: "short", day: "numeric" }).format(new Date(r.created_at))}
+                      {r.preferred_date ? `, wants ${shortDate(r.preferred_date)}` : ""}
+                    </p>
+                    <form action={updateRequest} className={styles.inlineForm}>
+                      <input type="hidden" name="client_id" value={client.id} />
+                      <input type="hidden" name="request_id" value={r.id} />
+                      <label htmlFor={`rs-${r.id}`} className={styles.srOnly}>Status</label>
+                      <select id={`rs-${r.id}`} name="status" defaultValue={r.status} className="select">
+                        <option value="new">New</option>
+                        <option value="acknowledged">Reviewing</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="closed">Closed</option>
+                      </select>
+                      <button type="submit" className="button quiet">Update</button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <section aria-labelledby="portal" className={styles.section}>
+            <h2 id="portal">Customer portal</h2>
+            <p className={styles.small}>
+              {(portalUsers ?? []).length > 0
+                ? `${(portalUsers ?? []).length} ${(portalUsers ?? []).length === 1 ? "person can" : "people can"} sign in to see visits, estimates and invoices.`
+                : "Let this customer see their visits, approve estimates and view invoices online."}
+            </p>
+            {portal_invite && (
+              <div className="notice">
+                <p>Send this link to the customer. It works once, for that email, for 14 days.</p>
+                <input readOnly className="input" style={{ width: "100%", marginTop: 8 }} aria-label="Portal invite link"
+                  value={`${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/portal/join/${portal_invite}`} />
+              </div>
+            )}
+            <form action={invitePortal} className={styles.inlineForm}>
+              <input type="hidden" name="client_id" value={client.id} />
+              <label htmlFor="portal-email" className={styles.srOnly}>Customer email</label>
+              <input id="portal-email" name="email" type="email" required className="input" defaultValue={client.email ?? ""} placeholder="Customer email" />
+              <button type="submit" className="button quiet">Create invite</button>
+            </form>
+            {(portalUsers ?? []).map((u) => (
+              <form key={u.id} action={revokePortal} className={styles.inlineForm}>
+                <input type="hidden" name="client_id" value={client.id} />
+                <input type="hidden" name="access_id" value={u.id} />
+                <span className={styles.small}>Portal login since {new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(u.created_at))}</span>
+                <button type="submit" className={styles.textButton}>Remove access</button>
+              </form>
+            ))}
           </section>
 
           <section aria-labelledby="properties" className={styles.section}>
