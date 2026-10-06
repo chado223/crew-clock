@@ -1,0 +1,65 @@
+name: Weather (NWS live check + staging end-to-end)
+
+# Proves the weather worker against the real National Weather Service and the
+# free Census geocoder, then runs a full pass on crew-clock-staging inside a
+# transaction that is rolled back. Free GitHub runner; no paid scheduler.
+# Targets ONLY crew-clock-staging via STAGING_DB_URL.
+
+on:
+  push:
+    branches: [main, "phase-*"]
+    paths: ["platform/packages/weather/**", "platform/supabase/migrations/**", ".github/workflows/weather-staging.yml"]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 10 * * *"   # daily, early morning US Eastern (runs from the default branch only)
+
+concurrency:
+  group: staging-db
+  cancel-in-progress: false
+
+jobs:
+  weather:
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.STAGING_DB_URL }}
+      WEATHER_CONTACT: github.com/chado223/crew-clock
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install (isolated)
+        run: |
+          cp -r platform/packages/weather "$RUNNER_TEMP/weather"
+          cd "$RUNNER_TEMP/weather" && npm install --no-audit --no-fund
+      - name: Unit tests + typecheck
+        working-directory: ${{ runner.temp }}/weather
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/unit.txt || { grep -E "not ok|Error" /tmp/unit.txt | head -20 | sed 's/^/::error title=weather-unit::/'; exit 1; }
+          npx tsc --noEmit -p . 2>&1 | tee /tmp/tsc.txt || { grep "error TS" /tmp/tsc.txt | head -20 | sed 's/^/::error title=weather-tsc::/'; exit 1; }
+      - name: Live NWS probe (Seymour, TN)
+        working-directory: ${{ runner.temp }}/weather
+        run: node src/cli.ts probe 35.8906 -83.7743
+      - name: Guard against production
+        if: env.DB_URL != ''
+        run: |
+          case "$DB_URL" in
+            *iwowjrnrbjiydckhjsfi*) echo "::error::STAGING_DB_URL points at PRODUCTION. Refusing."; exit 1;;
+            *newivmnolbzhjypusmob*) echo "Target: crew-clock-staging";;
+            *) echo "::error::STAGING_DB_URL is not the crew-clock-staging project. Refusing."; exit 1;;
+          esac
+      - name: Install psql 17
+        if: env.DB_URL != ''
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+      - name: Apply migrations to staging (idempotent)
+        if: env.DB_URL != ''
+        run: bash platform/supabase/scripts/apply_migrations.sh
+      - name: End-to-end on staging (rolled back)
+        if: env.DB_URL != ''
+        working-directory: ${{ runner.temp }}/weather
+        run: node src/cli.ts e2e
