@@ -61,6 +61,12 @@ select tests.login('a0000000-0000-0000-0000-000000000001');
 set role authenticated;
 select tests.lives($$insert into public.contact_preferences (tenant_id, client_id, kinds_off) values
   ('aaaaaaaa-0000-0000-0000-000000000000', 'c1a00000-0000-0000-0000-000000000001', '{invoice_reminder}')$$, 'Office records a preference');
+select tests.lives($$insert into public.contact_preferences (tenant_id, client_id, kinds_off) values
+  ('aaaaaaaa-0000-0000-0000-000000000000', 'c1a00000-0000-0000-0000-000000000001', '{invoice_reminder}')
+  on conflict (client_id) do update set tenant_id = excluded.tenant_id, client_id = excluded.client_id, kinds_off = excluded.kinds_off$$,
+  'Preferences save as an upsert (how the web app writes them)');
+select tests.throws($$update public.contact_preferences set client_id = 'c1a00000-0000-0000-0000-0000000000dd'$$, '%client_change_not_allowed%',
+  'Preferences cannot be moved to another customer');
 reset role;
 update public.communication_settings set invoice_reminders = true, visit_reminders = true where tenant_id = 'aaaaaaaa-0000-0000-0000-000000000000';
 select public.queue_invoice_reminders('aaaaaaaa-0000-0000-0000-000000000000');

@@ -48,3 +48,5 @@
 .choices { display: flex; gap: 10px; flex-wrap: wrap; }
 .textarea { padding-top: 12px; min-height: 96px; resize: vertical; font-family: inherit; }
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.choice { display: flex; gap: 10px; align-items: flex-start; font-weight: 500; }
+.choice input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--turf); flex: none; }
