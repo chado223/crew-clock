@@ -67,11 +67,11 @@ Patching these in Flask would change historical payroll numbers mid-stream. They
 - Narrow Sheets scope from `drive` to `spreadsheets` only (test on Render first; `open_by_key` works with spreadsheets scope)
 
 ## Next up (not blocked on Chad)
-- Owner dashboard: today at a glance (crews, clocked-in, weather alerts, open requests, A/R, messages that failed)
-- Mobile: weather and route context on the crew's Today screen; job photos (before/after) with customer-visible flag
-- Visit-moved notice to customers (template exists) wired to weather moves, behind the same test-mode locks
-- Generated DB types via CI instead of hand-written ones
-- Scheduler for weather + messages once hosting is chosen (code runs anywhere Node reaches the DB; today: GitHub Actions on staging only)
+- Generated database types in CI (replace hand-written row types and casts)
+- Business health: compute job costing once per page load (today it runs twice)
+- Expo SDK upgrade before the first store build: npm audit's high findings are all Expo/React Native build tooling (metro, jest, cli), fixed in newer SDKs; nothing in the web runtime
+- Playwright smoke tests once a hosted staging web exists
+- Google Sheets hours export (needs a Google service account: owner setup)
 
 ## Owner decisions pending
 - Email provider (e.g. Postmark/Resend/SES) and SMS provider (e.g. Twilio) + turning on live messaging (`private.platform_flags.live_messaging`)
