@@ -47,6 +47,7 @@ async function addProperty(formData: FormData) {
     client_id: id,
     address_line1: address,
     city: String(formData.get("city") ?? "").trim() || null,
+    region: String(formData.get("region") ?? "").trim().toUpperCase() || null,
     postal_code: String(formData.get("postal_code") ?? "").trim() || null,
     access_notes: String(formData.get("access_notes") ?? "").trim() || null,
     lawn_sqft: Number.isFinite(sqft) && sqft > 0 ? Math.round(sqft) : null,
@@ -56,6 +57,7 @@ async function addProperty(formData: FormData) {
 }
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const JOB_STATUS: Record<string, string> = { paused: "Paused", completed: "Ended", canceled: "Canceled" };
 
 async function addJob(formData: FormData) {
   "use server";
@@ -187,6 +189,92 @@ async function updateRequest(formData: FormData) {
   redirect(`/clients/${id}${error ? `?error=${encodeURIComponent(friendlyError(error))}` : ""}`);
 }
 
+const back = (id: string, error?: unknown, anchor = ""): never => {
+  revalidatePath(`/clients/${id}`);
+  redirect(`/clients/${id}${error ? `?error=${encodeURIComponent(friendlyError(error))}` : ""}${anchor}`);
+};
+const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim() || null;
+
+async function saveClient(formData: FormData) {
+  "use server";
+  const id = String(formData.get("client_id"));
+  const name = text(formData, "name");
+  if (!name) redirect(`/clients/${id}?error=${encodeURIComponent("The customer needs a name.")}`);
+  const tags = (text(formData, "tags") ?? "").split(",").map((t) => t.trim()).filter(Boolean).slice(0, 20);
+  const { error } = await (await supabaseServer()).from("clients").update({
+    name,
+    kind: formData.get("kind") === "commercial" ? "commercial" : "residential",
+    company_name: text(formData, "company_name"),
+    email: text(formData, "email")?.toLowerCase() ?? null,
+    phone: text(formData, "phone"),
+    preferred_contact: text(formData, "preferred_contact"),
+    lead_source: text(formData, "lead_source"),
+    address: text(formData, "address"),
+    tags,
+  }).eq("id", id);
+  back(id, error);
+}
+
+async function saveProperty(formData: FormData) {
+  "use server";
+  const id = String(formData.get("client_id"));
+  const pid = String(formData.get("property_id"));
+  const sqft = Number(formData.get("lawn_sqft") ?? "");
+  const address = text(formData, "address_line1");
+  if (!address) redirect(`/clients/${id}?error=${encodeURIComponent("Enter the street address.")}`);
+  const { error } = await (await supabaseServer()).from("properties").update({
+    label: text(formData, "label"),
+    address_line1: address,
+    address_line2: text(formData, "address_line2"),
+    city: text(formData, "city"),
+    region: text(formData, "region")?.toUpperCase() ?? null,
+    postal_code: text(formData, "postal_code"),
+    access_notes: text(formData, "access_notes"),
+    gate_code: text(formData, "gate_code"),
+    notes: text(formData, "notes"),
+    lawn_sqft: Number.isFinite(sqft) && sqft > 0 ? Math.round(sqft) : null,
+  }).eq("id", pid);
+  back(id, error, "#properties");
+}
+
+async function setPropertyStatus(formData: FormData) {
+  "use server";
+  const id = String(formData.get("client_id"));
+  const { error } = await (await supabaseServer()).from("properties")
+    .update({ status: formData.get("status") === "inactive" ? "inactive" : "active" })
+    .eq("id", String(formData.get("property_id")));
+  back(id, error, "#properties");
+}
+
+async function saveJob(formData: FormData) {
+  "use server";
+  const id = String(formData.get("client_id"));
+  const num = (k: string) => {
+    const v = text(formData, k);
+    const n = v == null ? NaN : Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const crew = String(formData.get("crew_id") ?? "");
+  const endsOn = text(formData, "ends_on");
+  const status = text(formData, "status");
+  const { error } = await (await supabaseServer()).rpc("update_job", {
+    p_job_id: String(formData.get("job_id")),
+    p_title: text(formData, "title"),
+    p_price: num("price"),
+    p_est_minutes: num("est_minutes"),
+    p_crew_id: crew && crew !== "none" ? crew : null,
+    p_clear_crew: crew === "none",
+    p_interval_weeks: num("interval_weeks"),
+    p_weekday: num("weekday"),
+    p_ends_on: endsOn,
+    p_clear_ends_on: formData.get("had_end") === "1" && !endsOn,
+    p_status: status,
+    p_apply_to_scheduled: formData.get("apply") !== "off",
+    p_reason: text(formData, "reason"),
+  } as never);
+  back(id, error, "#jobs");
+}
+
 async function setStatus(formData: FormData) {
   "use server";
   const id = String(formData.get("client_id"));
@@ -219,7 +307,7 @@ export default async function ClientPage({
     supabase.from("activity").select("id, kind, summary, occurred_at").eq("client_id", id).order("occurred_at", { ascending: false }).order("seq", { ascending: false }).limit(100),
   ]);
   const [{ data: jobs }, { data: crews }, { data: upcoming }] = await Promise.all([
-    supabase.from("jobs").select("id, title, kind, status, price, interval_weeks, weekday, property_id, crews(name)").eq("client_id", id).order("created_at"),
+    supabase.from("jobs").select("id, title, kind, status, price, est_minutes, crew_id, interval_weeks, weekday, ends_on, property_id, crews(name)").eq("client_id", id).order("created_at"),
     supabase.from("crews").select("id, name").eq("tenant_id", company.tenant_id).eq("active", true).order("name"),
     supabase.from("visits").select("id, scheduled_date, status, job_id").eq("client_id", id)
       .gte("scheduled_date", new Intl.DateTimeFormat("en-CA", { timeZone: company.timezone }).format(new Date()))
@@ -284,7 +372,7 @@ export default async function ClientPage({
 
       <div className={styles.columns}>
         <div className={styles.main}>
-          <section aria-labelledby="jobs" className={styles.section}>
+          <section aria-labelledby="jobs" id="jobs-section" className={styles.section}>
             <h2 id="jobs">Jobs</h2>
             {(jobs ?? []).length === 0 ? (
               <p className={styles.empty}>No jobs yet. Add the work you do for this customer below.</p>
@@ -300,7 +388,57 @@ export default async function ClientPage({
                       {j.price ? `, $${Number(j.price).toFixed(2)}` : ""}
                       {(j.crews as unknown as { name: string } | null)?.name ? `, ${(j.crews as unknown as { name: string }).name}` : ""}
                       {nextVisit.get(j.id) ? `. Next: ${shortDate(nextVisit.get(j.id)!)}` : ""}
+                      {j.ends_on ? `. Ends ${shortDate(j.ends_on)}` : ""}
                     </p>
+                    {j.status !== "active" && j.status !== "scheduled" && <p className={styles.badge}>{JOB_STATUS[j.status] ?? j.status}</p>}
+                    <details className={styles.editBox}>
+                      <summary>Change</summary>
+                      <form action={saveJob} className={styles.propForm}>
+                        <input type="hidden" name="client_id" value={client.id} />
+                        <input type="hidden" name="job_id" value={j.id} />
+                        <input type="hidden" name="had_end" value={j.ends_on ? "1" : "0"} />
+                        <div className="field"><label htmlFor={`t-${j.id}`}>Job</label><input id={`t-${j.id}`} name="title" defaultValue={j.title} required className="input" /></div>
+                        <div className={styles.twoUp}>
+                          <div className="field"><label htmlFor={`p-${j.id}`}>Price per visit ($)</label><input id={`p-${j.id}`} name="price" type="number" min={0} step="0.01" defaultValue={j.price ?? ""} className="input" /></div>
+                          <div className="field"><label htmlFor={`m-${j.id}`}>Minutes on site</label><input id={`m-${j.id}`} name="est_minutes" type="number" min={1} defaultValue={j.est_minutes ?? ""} className="input" /></div>
+                        </div>
+                        <div className="field">
+                          <label htmlFor={`c-${j.id}`}>Crew</label>
+                          <select id={`c-${j.id}`} name="crew_id" defaultValue={j.crew_id ?? "none"} className="select">
+                            <option value="none">No crew</option>
+                            {(crews ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </div>
+                        {j.kind === "recurring" && (
+                          <div className={styles.twoUp}>
+                            <div className="field">
+                              <label htmlFor={`w-${j.id}`}>Day</label>
+                              <select id={`w-${j.id}`} name="weekday" defaultValue={String(j.weekday ?? 1)} className="select">
+                                {WEEKDAYS.map((d, i) => <option key={d} value={i + 1}>{d}</option>)}
+                              </select>
+                            </div>
+                            <div className="field">
+                              <label htmlFor={`i-${j.id}`}>Every</label>
+                              <select id={`i-${j.id}`} name="interval_weeks" defaultValue={String(j.interval_weeks ?? 1)} className="select">
+                                {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n === 1 ? "Week" : `${n} weeks`}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                        {j.kind === "recurring" && (
+                          <div className="field"><label htmlFor={`e-${j.id}`}>Last date (optional)</label><input id={`e-${j.id}`} name="ends_on" type="date" defaultValue={j.ends_on ?? ""} className="input" /><p className="hint">For seasonal work. Visits after it are canceled.</p></div>
+                        )}
+                        <label className={styles.checkRow}><input type="checkbox" name="apply" value="off" /> Keep upcoming visits at their old price, time and crew</label>
+                        <div className="field"><label htmlFor={`r-${j.id}`}>Reason (optional)</label><input id={`r-${j.id}`} name="reason" className="input" placeholder="e.g. Price increase for 2027" /></div>
+                        <div className={styles.inlineForm}>
+                          <button className="button" type="submit">Save changes</button>
+                          {j.kind === "recurring" && (j.status === "paused"
+                            ? <button className="button quiet" type="submit" name="status" value="active">Resume</button>
+                            : <button className="button quiet" type="submit" name="status" value="paused">Pause</button>)}
+                          {j.status !== "completed" && j.status !== "canceled" && <button className={styles.textButton} type="submit" name="status" value="completed">End this job</button>}
+                        </div>
+                      </form>
+                    </details>
                   </li>
                 ))}
               </ul>
@@ -314,7 +452,7 @@ export default async function ClientPage({
                   <div className="field">
                     <label htmlFor="jp">Property</label>
                     <select id="jp" name="property_id" className="select">
-                      {(properties ?? []).map((p) => <option key={p.id} value={p.id}>{p.address_line1}</option>)}
+                      {(properties ?? []).filter((p) => p.status !== "inactive").map((p) => <option key={p.id} value={p.id}>{p.address_line1}</option>)}
                     </select>
                   </div>
                   <div className="field">
@@ -389,7 +527,39 @@ export default async function ClientPage({
               <dt>Phone</dt><dd>{client.phone ? <a href={`tel:${client.phone}`}>{client.phone}</a> : "None"}</dd>
               <dt>Email</dt><dd>{client.email ? <a href={`mailto:${client.email}`}>{client.email}</a> : "None"}</dd>
               {client.company_name && (<><dt>Company</dt><dd>{client.company_name}</dd></>)}
+              {client.address && (<><dt>Mailing</dt><dd>{client.address}</dd></>)}
+              {(client.tags ?? []).length > 0 && (<><dt>Tags</dt><dd>{(client.tags as string[]).join(", ")}</dd></>)}
             </dl>
+            <details className={styles.addProp}>
+              <summary>Edit details</summary>
+              <form action={saveClient} className={styles.propForm}>
+                <input type="hidden" name="client_id" value={client.id} />
+                <div className="field"><label htmlFor="c-name">Name</label><input id="c-name" name="name" required defaultValue={client.name} className="input" /></div>
+                <div className="field">
+                  <label htmlFor="c-kind">Type</label>
+                  <select id="c-kind" name="kind" defaultValue={client.kind ?? "residential"} className="select">
+                    <option value="residential">Residential</option>
+                    <option value="commercial">Commercial</option>
+                  </select>
+                </div>
+                <div className="field"><label htmlFor="c-co">Company (commercial)</label><input id="c-co" name="company_name" defaultValue={client.company_name ?? ""} className="input" /></div>
+                <div className="field"><label htmlFor="c-ph">Phone</label><input id="c-ph" name="phone" type="tel" defaultValue={client.phone ?? ""} className="input" /></div>
+                <div className="field"><label htmlFor="c-em">Email</label><input id="c-em" name="email" type="email" defaultValue={client.email ?? ""} className="input" /></div>
+                <div className="field">
+                  <label htmlFor="c-pc">Best way to reach</label>
+                  <select id="c-pc" name="preferred_contact" defaultValue={client.preferred_contact ?? ""} className="select">
+                    <option value="">No preference</option>
+                    <option value="call">Phone call</option>
+                    <option value="text">Text</option>
+                    <option value="email">Email</option>
+                  </select>
+                </div>
+                <div className="field"><label htmlFor="c-addr">Mailing address</label><input id="c-addr" name="address" defaultValue={client.address ?? ""} className="input" /></div>
+                <div className="field"><label htmlFor="c-src">Found you through</label><input id="c-src" name="lead_source" defaultValue={client.lead_source ?? ""} className="input" /></div>
+                <div className="field"><label htmlFor="c-tags">Tags</label><input id="c-tags" name="tags" defaultValue={(client.tags ?? []).join(", ")} className="input" placeholder="e.g. corner lot, HOA" /><p className="hint">Separate with commas.</p></div>
+                <button className="button" type="submit">Save</button>
+              </form>
+            </details>
           </section>
 
           {(requests ?? []).length > 0 && (
@@ -523,10 +693,39 @@ export default async function ClientPage({
             ) : (
               <ul className={styles.props}>
                 {(properties ?? []).map((p) => (
-                  <li key={p.id}>
-                    <p className={styles.addr}>{p.address_line1}{p.city ? `, ${p.city}` : ""}</p>
+                  <li key={p.id} className={p.status === "inactive" ? styles.inactive : undefined}>
+                    <p className={styles.addr}>{p.label ? `${p.label}: ` : ""}{p.address_line1}{p.city ? `, ${p.city}` : ""}{p.region ? ` ${p.region}` : ""}</p>
+                    {p.status === "inactive" && <p className={styles.badge}>Archived</p>}
                     {p.lawn_sqft && <p className={styles.small}>{p.lawn_sqft.toLocaleString()} sq ft of lawn</p>}
                     {p.access_notes && <p className={styles.small}>{p.access_notes}</p>}
+                    {p.latitude == null && <p className={styles.small}>Not on the map yet (Routes can look it up).</p>}
+                    <details className={styles.editBox}>
+                      <summary>Edit</summary>
+                      <form action={saveProperty} className={styles.propForm}>
+                        <input type="hidden" name="client_id" value={client.id} />
+                        <input type="hidden" name="property_id" value={p.id} />
+                        <div className="field"><label htmlFor={`pl-${p.id}`}>Label (optional)</label><input id={`pl-${p.id}`} name="label" defaultValue={p.label ?? ""} className="input" placeholder="e.g. Rental house" /></div>
+                        <div className="field"><label htmlFor={`pa-${p.id}`}>Street address</label><input id={`pa-${p.id}`} name="address_line1" required defaultValue={p.address_line1} className="input" /></div>
+                        <div className="field"><label htmlFor={`pa2-${p.id}`}>Unit / line 2</label><input id={`pa2-${p.id}`} name="address_line2" defaultValue={p.address_line2 ?? ""} className="input" /></div>
+                        <div className={styles.threeUp}>
+                          <div className="field"><label htmlFor={`pc-${p.id}`}>City</label><input id={`pc-${p.id}`} name="city" defaultValue={p.city ?? ""} className="input" /></div>
+                          <div className="field"><label htmlFor={`pr-${p.id}`}>State</label><input id={`pr-${p.id}`} name="region" maxLength={2} defaultValue={p.region ?? ""} className="input" /></div>
+                          <div className="field"><label htmlFor={`pz-${p.id}`}>ZIP</label><input id={`pz-${p.id}`} name="postal_code" defaultValue={p.postal_code ?? ""} className="input" inputMode="numeric" /></div>
+                        </div>
+                        <div className="field"><label htmlFor={`ps-${p.id}`}>Lawn size (sq ft)</label><input id={`ps-${p.id}`} name="lawn_sqft" type="number" min={0} defaultValue={p.lawn_sqft ?? ""} className="input" /></div>
+                        <div className="field"><label htmlFor={`pn-${p.id}`}>Gate and access notes (crew see these)</label><input id={`pn-${p.id}`} name="access_notes" defaultValue={p.access_notes ?? ""} className="input" /></div>
+                        <div className="field"><label htmlFor={`pg-${p.id}`}>Gate code (office only)</label><input id={`pg-${p.id}`} name="gate_code" defaultValue={p.gate_code ?? ""} className="input" /></div>
+                        <div className="field"><label htmlFor={`po-${p.id}`}>Office notes</label><input id={`po-${p.id}`} name="notes" defaultValue={p.notes ?? ""} className="input" /></div>
+                        <button className="button" type="submit">Save</button>
+                      </form>
+                      <form action={setPropertyStatus} className={styles.inlineForm}>
+                        <input type="hidden" name="client_id" value={client.id} />
+                        <input type="hidden" name="property_id" value={p.id} />
+                        {p.status === "inactive"
+                          ? <button className="button quiet" name="status" value="active" type="submit">Restore</button>
+                          : <button className={styles.textButton} name="status" value="inactive" type="submit">Archive this property</button>}
+                      </form>
+                    </details>
                   </li>
                 ))}
               </ul>
@@ -537,6 +736,7 @@ export default async function ClientPage({
                 <input type="hidden" name="client_id" value={client.id} />
                 <div className="field"><label htmlFor="a1">Street address</label><input id="a1" name="address_line1" required className="input" /></div>
                 <div className="field"><label htmlFor="city">City</label><input id="city" name="city" className="input" /></div>
+                <div className="field"><label htmlFor="st">State</label><input id="st" name="region" maxLength={2} className="input" defaultValue="TN" /></div>
                 <div className="field"><label htmlFor="zip">ZIP</label><input id="zip" name="postal_code" className="input" inputMode="numeric" /></div>
                 <div className="field"><label htmlFor="sqft">Lawn size (sq ft)</label><input id="sqft" name="lawn_sqft" type="number" min={0} className="input" /></div>
                 <div className="field"><label htmlFor="access">Gate and access notes</label><input id="access" name="access_notes" className="input" placeholder="e.g. Side gate, dog in back yard" /></div>
