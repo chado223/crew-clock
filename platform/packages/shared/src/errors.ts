@@ -56,6 +56,9 @@ const MESSAGES: Record<string, string> = {
   invalid_phone: "Enter a phone number using digits.",
   note_too_long: "Keep the note under 2,000 characters.",
   week_start_mismatch: "That date isn't the first day of your work week.",
+  alert_not_found: "That weather alert no longer exists.",
+  alert_closed: "Someone already handled this weather alert.",
+  invalid_action: "That action isn't available here.",
 };
 
 /** Map a Supabase/Postgres error to a message a person can act on. */

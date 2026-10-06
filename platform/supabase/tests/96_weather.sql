@@ -32,6 +32,10 @@ select tests.throws($$update public.weather_settings set updated_by = 'a0000000-
 select tests.throws($$insert into public.weather_settings (tenant_id, enabled) values ('bbbbbbbb-0000-0000-0000-000000000000', true)$$,
   '%row-level security%', 'Cannot change another company''s weather settings');
 select tests.throws($$update public.weather_settings set min_temp_f = 90, max_temp_f = 80$$, '%check%', 'Nonsense temperature range rejected');
+select tests.lives($$insert into public.weather_settings (tenant_id, enabled, rain_chance_pct) values ('aaaaaaaa-0000-0000-0000-000000000000', true, 60)
+  on conflict (tenant_id) do update set tenant_id = excluded.tenant_id, enabled = excluded.enabled, rain_chance_pct = excluded.rain_chance_pct$$,
+  'Settings save as an upsert (how the web app writes them)');
+select tests.throws($$update public.weather_settings set tenant_id = 'bbbbbbbb-0000-0000-0000-000000000000'$$, '%', 'Settings cannot be moved to another company');
 reset role;
 select tests.ok((select count(*) from public.audit_log where entity_type = 'weather_settings') >= 1, 'Settings changes are audited');
 
