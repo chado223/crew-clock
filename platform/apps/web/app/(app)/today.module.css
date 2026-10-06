@@ -47,7 +47,46 @@
 .num { text-align: right !important; }
 .table td.num { font-size: 1.15rem; }
 
+.overview { display: grid; gap: 10px; }
+.headline { font-size: 1.5rem; line-height: 1.4; font-weight: 500; max-width: 46ch; }
+.headline :global(.figure) { font-size: 1.9rem; font-weight: 600; color: var(--turf); }
+.money { color: var(--ink-soft); max-width: 80ch; }
+.badge { display: inline-block; min-width: 1.6em; padding: 0 8px; margin-left: 6px; border-radius: 999px; background: var(--ink);
+  color: var(--daylight); font-size: 0.9rem; text-align: center; vertical-align: middle; }
+
+.groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
+.group { display: grid; gap: 8px; }
+.group h3 { font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); }
+.urgentTitle { color: var(--error) !important; }
+.todos { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius-panel); overflow: hidden; }
+.todos li { border-bottom: 1px solid var(--line); border-left: 4px solid transparent; }
+.todos li:last-child { border-bottom: 0; }
+.todos li.urgent { border-left-color: var(--error); }
+.todos a { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "title amount" "detail amount";
+  gap: 2px 12px; padding: 12px 16px; color: var(--ink); text-decoration: none; min-height: 48px; }
+.todos a:hover { background: #eef2eb; }
+.todoTitle { grid-area: title; font-weight: 600; }
+.todoDetail { grid-area: detail; color: var(--ink-soft); font-size: 0.92rem; }
+.todoAmount { grid-area: amount; align-self: center; font-size: 1.15rem; font-weight: 600; }
+
+.crewGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; align-items: start; }
+.crewCard { background: var(--surface); border-radius: var(--radius-panel); padding: 14px 16px; display: grid; gap: 10px; }
+.crewHead { display: flex; justify-content: space-between; align-items: baseline; }
+.crewHead :global(.figure) { font-size: 1.3rem; font-weight: 600; }
+.bar { display: block; height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--turf); border-radius: 999px; }
+.crewStops { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.crewStops li { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.crewStops a, .crewStops span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip { flex: none; font-size: 0.78rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #eef2eb; color: var(--ink-soft); min-width: 64px; text-align: center; }
+.chip_completed { background: #dcebd9; color: var(--turf); }
+.chip_in_progress { background: var(--hivis); color: var(--ink); }
+.chip_skipped { background: #f3e7e3; color: var(--error); }
+.small { font-size: 0.92rem; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
 @media (max-width: 760px) {
+  .headline { font-size: 1.3rem; }
   .onClock { padding: 18px; }
   .elapsed { font-size: 2rem; }
   .table th, .table td { padding: 10px 12px; }
