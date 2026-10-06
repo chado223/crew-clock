@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AppState, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useFocusEffect } from "expo-router";
-import { elapsedSince, formatClockTime, formatDuration, friendlyError, type TimeEntry } from "@crew/shared";
+import { elapsedSince, formatClockTime, formatDuration, friendlyError, googleRouteUrl, type NavTarget, type TimeEntry } from "@crew/shared";
 import { supabase } from "../../lib/supabase";
 import { companyToday, useCompany } from "../../lib/company";
 import { flush, pendingActions, pendingClockState, pendingVisitStatus, perform, type QueuedAction } from "../../lib/actionQueue";
@@ -94,6 +94,12 @@ export default function TodayScreen() {
   }
 
   const remaining = stops.filter((s) => (pendingVisitStatus(queued, s.visit_id) ?? s.status) !== "completed" && s.status !== "skipped" && s.status !== "canceled");
+  // The whole rest of the day in Google Maps, in the office's order, from where the phone is.
+  const routeUrl = googleRouteUrl(
+    remaining
+      .map((s): NavTarget | null => (s.latitude != null && s.longitude != null ? { lat: s.latitude, lon: s.longitude } : s.address))
+      .filter((t): t is NavTarget => !!t),
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -145,6 +151,15 @@ export default function TodayScreen() {
             );
           })
         )}
+        {routeUrl && remaining.length > 1 && (
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => Linking.openURL(routeUrl)}
+            style={({ pressed }) => [styles.routeBtn, pressed && styles.pressed]}
+          >
+            <Text style={styles.routeText}>Drive the route ({Math.min(remaining.length, 10)} stops)</Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       <Pressable
@@ -180,6 +195,8 @@ const styles = StyleSheet.create({
   message: { fontFamily: font.textMedium, fontSize: 16, color: color.ink },
   queued: { fontFamily: font.text, fontSize: 15, color: color.inkSoft },
 
+  routeBtn: { minHeight: 56, borderRadius: 14, borderWidth: 1.5, borderColor: color.turf, alignItems: "center", justifyContent: "center", paddingHorizontal: 16 },
+  routeText: { fontFamily: font.textBold, fontSize: 17, color: color.turf },
   stopsHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginTop: 8 },
   h2: { fontFamily: font.textBold, fontSize: 22, color: color.ink },
   count: { fontFamily: font.textMedium, fontSize: 16, color: color.inkSoft },

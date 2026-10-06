@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { friendlyError } from "@crew/shared";
+import { appleStopUrl, friendlyError, googleRouteUrl } from "@crew/shared";
 import { supabase } from "../../lib/supabase";
 import { companyToday, useCompany } from "../../lib/company";
 import { pendingActions, pendingVisitStatus, perform } from "../../lib/actionQueue";
@@ -9,9 +9,8 @@ import type { Stop } from "../../lib/stops";
 import { color, font } from "../../lib/theme";
 
 function mapsUrl(stop: Stop) {
-  const q = stop.latitude != null && stop.longitude != null ? `${stop.latitude},${stop.longitude}` : stop.address ?? "";
-  const encoded = encodeURIComponent(q);
-  return Platform.OS === "ios" ? `https://maps.apple.com/?daddr=${encoded}` : `https://www.google.com/maps/dir/?api=1&destination=${encoded}`;
+  const target = stop.latitude != null && stop.longitude != null ? { lat: stop.latitude, lon: stop.longitude } : stop.address ?? "";
+  return Platform.OS === "ios" ? appleStopUrl(target) : googleRouteUrl([target])!;
 }
 
 export default function VisitScreen() {
