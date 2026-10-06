@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { formatMoney, friendlyError } from "@crew/shared";
 import { currentCompany, isManager } from "@/lib/company";
 import { supabaseServer } from "@/lib/supabase/server";
+import { companyProfile, Letterhead } from "@/components/letterhead";
+import { PrintButton } from "@/components/print-button";
 import { describeMessage, MESSAGE_COLUMNS, type MessageRow } from "@/lib/messages";
 import styles from "../../money.module.css";
 
@@ -103,6 +105,7 @@ export default async function EstimatePage({ params, searchParams }: { params: P
   const { data: lastMsg } = await (await supabaseServer()).from("messages").select(MESSAGE_COLUMNS)
     .eq("subject_type", "estimate").eq("subject_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle();
   const lastMessage = lastMsg as unknown as MessageRow | null;
+  const profile = await companyProfile(company.tenant_id);
 
   return (
     <div className={styles.page}>
@@ -115,7 +118,9 @@ export default async function EstimatePage({ params, searchParams }: { params: P
         </p>
       )}
 
+      <div className="noPrint" style={{ display: "flex", justifyContent: "flex-end" }}><PrintButton /></div>
       <article className={styles.doc}>
+        <Letterhead p={profile} />
         <div className={styles.docHead}>
           <div>
             <p className={styles.docNumber}>{est.number}</p>

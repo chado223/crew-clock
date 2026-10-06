@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { formatMoney, friendlyError } from "@crew/shared";
 import { currentCompany, isManager } from "@/lib/company";
 import { supabaseServer } from "@/lib/supabase/server";
+import { companyProfile } from "@/components/letterhead";
 import styles from "../money.module.css";
 
 export const metadata: Metadata = { title: "Invoices" };
@@ -16,10 +17,26 @@ const FILTERS = [
   ["all", "All"],
 ] as const;
 
+async function billEveryone(formData: FormData) {
+  "use server";
+  const { company } = await currentCompany();
+  const { data, error } = await (await supabaseServer()).rpc("invoice_all_completed", {
+    p_tenant_id: company.tenant_id,
+    p_from: String(formData.get("from")),
+    p_to: String(formData.get("to")),
+  });
+  if (error) redirect(`/invoices?error=${encodeURIComponent(friendlyError(error))}`);
+  const n = ((data ?? []) as unknown[]).length;
+  redirect(`/invoices?show=draft&batch=${n}`);
+}
+
 async function billVisits(formData: FormData) {
   "use server";
   const tax = Number(formData.get("tax_percent") ?? 0) / 100;
+  const { company } = await currentCompany();
+  const profile = await companyProfile(company.tenant_id);
   const { data, error } = await (await supabaseServer()).rpc("invoice_completed_visits", {
+    p_due_days: profile?.payment_terms_days ?? 30,
     p_client_id: String(formData.get("client_id")),
     p_from: String(formData.get("from")),
     p_to: String(formData.get("to")),
@@ -32,7 +49,7 @@ async function billVisits(formData: FormData) {
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show?: string; error?: string; client?: string }>;
+  searchParams: Promise<{ show?: string; error?: string; client?: string; batch?: string }>;
 }) {
   const { company } = await currentCompany();
   if (!isManager(company)) redirect("/");
@@ -54,6 +71,7 @@ export default async function InvoicesPage({
   ]);
 
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: company.timezone }).format(new Date());
+  const profile = await companyProfile(company.tenant_id);
   const monthStart = `${today.slice(0, 8)}01`;
   const outstanding = (invoices ?? [])
     .filter((i) => ["sent", "partial", "overdue"].includes(i.status))
@@ -80,8 +98,23 @@ export default async function InvoicesPage({
       {sp.error && <p className="error-text" role="alert">{sp.error}</p>}
       {error && <p className="error-text">{friendlyError(error)}</p>}
 
+      {sp.batch !== undefined && (
+        <p className="notice" role="status">
+          {sp.batch === "0" ? "No unbilled work in that period." : `${sp.batch} draft invoice${sp.batch === "1" ? "" : "s"} created. Review them, then send.`}
+        </p>
+      )}
+      <section className={styles.panel} aria-labelledby="bill-all">
+        <h2 id="bill-all">Invoice everyone</h2>
+        <p className={styles.empty}>One draft per customer for all finished, unbilled visits in the period, with your company&apos;s tax rate and terms (<Link href="/settings">settings</Link>).</p>
+        <form action={billEveryone} className={styles.form}>
+          <div className="field"><label htmlFor="ball-from">Visits from</label><input id="ball-from" name="from" type="date" required defaultValue={monthStart} className="input" /></div>
+          <div className="field"><label htmlFor="ball-to">Through</label><input id="ball-to" name="to" type="date" required defaultValue={today} className="input" /></div>
+          <button className="button" type="submit">Create drafts for everyone</button>
+        </form>
+      </section>
+
       <section className={styles.panel} aria-labelledby="bill">
-        <h2 id="bill">Bill completed work</h2>
+        <h2 id="bill">Bill one customer</h2>
         <p className={styles.empty}>Creates a draft invoice from a customer's completed visits that haven't been billed yet. You review it before marking it sent.</p>
         <form action={billVisits} className={styles.form}>
           <div className="field">
@@ -93,7 +126,7 @@ export default async function InvoicesPage({
           </div>
           <div className="field"><label htmlFor="from">Visits from</label><input id="from" name="from" type="date" required defaultValue={monthStart} className="input" /></div>
           <div className="field"><label htmlFor="to">Through</label><input id="to" name="to" type="date" required defaultValue={today} className="input" /></div>
-          <div className="field"><label htmlFor="tax">Sales tax (%)</label><input id="tax" name="tax_percent" type="number" min={0} max={99} step="0.001" defaultValue="0" className="input" /></div>
+          <div className="field"><label htmlFor="tax">Sales tax (%)</label><input id="tax" name="tax_percent" type="number" min={0} max={99} step="0.001" defaultValue={String(Math.round(Number(profile?.default_tax_rate ?? 0) * 100000) / 1000)} className="input" /></div>
           <button className="button" type="submit">Create draft invoice</button>
         </form>
       </section>
