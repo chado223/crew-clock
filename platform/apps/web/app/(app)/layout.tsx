@@ -90,6 +90,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <li>
                 <Link href="/team">Team</Link>
               </li>
+              <li>
+                <Link href="/export">Import & export</Link>
+              </li>
             </>
           )}
         </ul>

@@ -1,0 +1,15 @@
+.page { display: grid; gap: 22px; max-width: 860px; }
+.lede, .muted { color: var(--ink-soft); }
+.flow { display: grid; gap: 18px; }
+.drop { display: grid; gap: 6px; padding: 26px; border: 2px dashed var(--line); border-radius: var(--radius-panel); background: var(--surface); cursor: pointer; }
+.drop:hover { border-color: var(--turf); }
+.drop input { margin-top: 8px; }
+.dropTitle { font-weight: 600; font-size: 1.15rem; }
+.panel { background: var(--surface); border-radius: var(--radius-panel); padding: 18px 20px; display: grid; gap: 10px; }
+.cols { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 16px; }
+.big { font-size: 1.2rem; }
+.issues { margin: 0; padding-left: 20px; display: grid; gap: 2px; max-height: 280px; overflow: auto; }
+.bad { color: var(--error); }
+.result { background: #e6efe3; border-radius: var(--radius-panel); padding: 20px; display: grid; gap: 8px; }
+.help summary { cursor: pointer; font-weight: 600; color: var(--turf); }
+.help p { color: var(--ink-soft); margin-top: 8px; }
