@@ -21,8 +21,14 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Dependency audit (report only)
         run: |
-          npm audit --omit=dev --audit-level=high > /tmp/audit.txt 2>&1 && echo "::notice title=npm-audit::no high or critical issues" || \
-            { grep -E "high|critical" /tmp/audit.txt | head -10 | sed 's/^/::warning title=npm-audit::/'; true; }
+          npm audit --omit=dev --json > /tmp/audit.json 2>/dev/null || true
+          node -e '
+            const a = require("/tmp/audit.json"); const v = a.vulnerabilities || {};
+            const rows = Object.values(v).filter(x => ["high","critical"].includes(x.severity))
+              .map(x => `${x.severity} ${x.name} (${x.isDirect ? "direct" : "via " + (x.effects||[]).slice(0,3).join(",")}) fix:${x.fixAvailable ? (x.fixAvailable.name ? x.fixAvailable.name + "@" + x.fixAvailable.version : "yes") : "none"}`);
+            console.log(`::notice title=npm-audit::${rows.length} high/critical packages`);
+            rows.slice(0, 25).forEach(r => console.log(`::warning title=npm-audit::${r}`));
+          '
       - name: Typecheck shared
         run: npm run typecheck -w @crew/shared
       - name: Shared tests
