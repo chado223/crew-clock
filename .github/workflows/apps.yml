@@ -21,6 +21,11 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Typecheck shared
         run: npm run typecheck -w @crew/shared
+      - name: Weather worker tests + typecheck
+        run: |
+          set -o pipefail
+          npm test -w @crew/weather 2>&1 | tee /tmp/wt.txt || { grep -E "not ok|Error" /tmp/wt.txt | head -20 | sed 's/^/::error title=weather-unit::/'; exit 1; }
+          npm run typecheck -w @crew/weather 2>&1 | tee /tmp/wtc.txt || { grep "error TS" /tmp/wtc.txt | head -20 | sed 's/^/::error title=weather-tsc::/'; exit 1; }
       - name: Typecheck mobile
         run: |
           set -o pipefail

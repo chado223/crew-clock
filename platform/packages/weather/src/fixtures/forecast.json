@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "periods": [
+      { "number": 1, "name": "Tonight", "startTime": "2026-10-05T20:00:00-04:00", "endTime": "2026-10-06T06:00:00-04:00", "isDaytime": false, "temperature": 52, "temperatureUnit": "F", "probabilityOfPrecipitation": { "unitCode": "wmoUnit:percent", "value": 30 }, "windSpeed": "5 mph", "shortForecast": "Chance Showers" },
+      { "number": 2, "name": "Tuesday", "startTime": "2026-10-06T06:00:00-04:00", "endTime": "2026-10-06T18:00:00-04:00", "isDaytime": true, "temperature": 71, "temperatureUnit": "F", "probabilityOfPrecipitation": { "unitCode": "wmoUnit:percent", "value": 70 }, "windSpeed": "10 to 15 mph", "shortForecast": "Showers Likely" },
+      { "number": 3, "name": "Tuesday Night", "startTime": "2026-10-06T18:00:00-04:00", "endTime": "2026-10-07T06:00:00-04:00", "isDaytime": false, "temperature": 49, "temperatureUnit": "F", "probabilityOfPrecipitation": { "unitCode": "wmoUnit:percent", "value": 20 }, "windSpeed": "5 to 10 mph", "shortForecast": "Slight Chance Rain" },
+      { "number": 4, "name": "Wednesday", "startTime": "2026-10-07T06:00:00-04:00", "endTime": "2026-10-07T18:00:00-04:00", "isDaytime": true, "temperature": 74, "temperatureUnit": "F", "probabilityOfPrecipitation": { "unitCode": "wmoUnit:percent", "value": null }, "windSpeed": "5 mph", "shortForecast": "Sunny" },
+      { "number": 5, "name": "Wednesday Night", "startTime": "2026-10-07T18:00:00-04:00", "endTime": "2026-10-08T06:00:00-04:00", "isDaytime": false, "temperature": 51, "temperatureUnit": "F", "probabilityOfPrecipitation": { "unitCode": "wmoUnit:percent", "value": null }, "windSpeed": "0 to 5 mph", "shortForecast": "Clear" }
+    ]
+  }
+}
