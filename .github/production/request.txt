@@ -7,3 +7,4 @@
 action=migrate
 # run 1: 2026-10-07T16:40:58Z read-only identity check
 # run 2: 2026-10-07T16:45:09Z apply migrations (schema only, no data), mark production, preflight
+# run 3: 2026-10-07T16:56:52Z apply 20261007001600 (lock down unused scenarios table), preflight
