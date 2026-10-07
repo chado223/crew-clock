@@ -24,10 +24,14 @@ drift=0
 
 # Pass 1, before applying anything: every applied migration must still exist
 # unchanged, and nothing new may sort before the newest applied version.
-newest_applied="$(sort <<<"$applied" | tail -1)"
+# (Only versions that match a file count; a dashboard-tool record carries its own timestamp.)
+newest_applied="$(for v in $applied; do ls "$MIG/${v}_"*.sql >/dev/null 2>&1 && echo "$v"; done | sort | tail -1)"
+names="$("${PSQL[@]}" -At -F' ' -c "select version, coalesce(name, '') from supabase_migrations.schema_migrations")"
 for v in $applied; do
-  if ! ls "$MIG/${v}_"*.sql >/dev/null 2>&1; then
-    echo "::error title=migration-drift::applied migration $v has no file any more (deleted or renamed)."; drift=1
+  # A record made by the Supabase dashboard tool names the file it came from instead of using its version.
+  n="$(awk -v v="$v" '$1==v {print $2}' <<<"$names")"
+  if ! ls "$MIG/${v}_"*.sql >/dev/null 2>&1 && [[ ! -f "$MIG/$n.sql" ]]; then
+    echo "::error title=migration-drift::applied migration $v ($n) has no file any more (deleted or renamed)."; drift=1
   fi
 done
 for f in $(ls "$MIG"/*.sql | sort); do
