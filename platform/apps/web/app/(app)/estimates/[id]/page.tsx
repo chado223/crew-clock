@@ -36,6 +36,18 @@ async function addLine(formData: FormData) {
   back(id, error);
 }
 
+async function editLine(formData: FormData) {
+  "use server";
+  const id = String(formData.get("id"));
+  const qty = Number(formData.get("quantity"));
+  const price = Number(formData.get("unit_price"));
+  const description = String(formData.get("description") ?? "").trim();
+  if (!description || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price)) back(id, "Enter a description, quantity and price.");
+  const { error } = await (await supabaseServer()).from("estimate_lines")
+    .update({ description, quantity: qty, unit_price: Math.round(price * 100) / 100 }).eq("id", String(formData.get("line_id")));
+  back(id, error);
+}
+
 async function removeLine(formData: FormData) {
   "use server";
   const id = String(formData.get("id"));
@@ -148,6 +160,20 @@ export default async function EstimatePage({ params, searchParams }: { params: P
                   <td className={`${styles.right} figure`}>{formatMoney(l.amount)}{l.repeat_every_weeks ? " per visit" : ""}</td>
                   {draft && (
                     <td className={`${styles.right} noPrint`}>
+                      <details className={styles.lineEdit}>
+                        <summary>Edit</summary>
+                        <form action={editLine} className={styles.inline}>
+                          <input type="hidden" name="id" value={est.id} />
+                          <input type="hidden" name="line_id" value={l.id} />
+                          <label className="srOnly" htmlFor={`ld-${l.id}`}>Description</label>
+                          <input id={`ld-${l.id}`} name="description" defaultValue={l.description} required className="input" />
+                          <label className="srOnly" htmlFor={`lq-${l.id}`}>Quantity</label>
+                          <input id={`lq-${l.id}`} name="quantity" type="number" min={0.01} step="0.01" defaultValue={l.quantity} className="input" style={{ width: 90 }} />
+                          <label className="srOnly" htmlFor={`lp-${l.id}`}>Price each</label>
+                          <input id={`lp-${l.id}`} name="unit_price" type="number" step="0.01" defaultValue={l.unit_price} className="input" style={{ width: 110 }} />
+                          <button type="submit" className="button quiet">Save</button>
+                        </form>
+                      </details>
                       <form action={removeLine}>
                         <input type="hidden" name="id" value={est.id} />
                         <input type="hidden" name="line_id" value={l.id} />

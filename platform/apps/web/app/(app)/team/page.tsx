@@ -53,6 +53,29 @@ async function setCrewMembers(formData: FormData) {
   redirect(error ? `/team?error=${encodeURIComponent(friendlyError(error))}` : "/team");
 }
 
+async function saveEmployee(formData: FormData) {
+  "use server";
+  const t = (k: string) => String(formData.get(k) ?? "").trim() || null;
+  const name = t("display_name");
+  if (!name) redirect(`/team?error=${encodeURIComponent("Enter a name.")}`);
+  const { error, count } = await (await supabaseServer()).from("employees").update({
+    display_name: name, email: t("email")?.toLowerCase() ?? null, phone: t("phone"), hired_on: t("hired_on"), notes: t("notes"),
+  }, { count: "exact" }).eq("id", String(formData.get("employee_id")));
+  if (error) redirect(`/team?error=${encodeURIComponent(friendlyError(error))}`);
+  if (!count) redirect(`/team?error=${encodeURIComponent("Only the owner can change an owner's record.")}`);
+  redirect("/team?done=saved");
+}
+
+async function saveCrew(formData: FormData) {
+  "use server";
+  const name = String(formData.get("crew_name") ?? "").trim();
+  const active = formData.get("active");
+  const { error } = await (await supabaseServer()).from("crews").update({
+    ...(name ? { name } : {}), ...(active ? { active: active === "on" } : {}),
+  }).eq("id", String(formData.get("crew_id")));
+  redirect(error ? `/team?error=${encodeURIComponent(friendlyError(error))}` : "/team?done=saved");
+}
+
 async function changeRole(formData: FormData) {
   "use server";
   const { company } = await currentCompany();
@@ -118,7 +141,7 @@ export default async function TeamPage({
     supabase.from("crew_members").select("crew_id, employee_id, is_lead").eq("tenant_id", company.tenant_id),
   ]);
   const [{ data: employees }, { data: members }, { data: pending }] = await Promise.all([
-    supabase.from("employees").select("id, display_name, email, status, user_id").eq("tenant_id", company.tenant_id).order("display_name"),
+    supabase.from("employees").select("id, display_name, email, phone, hired_on, notes, status, user_id").eq("tenant_id", company.tenant_id).order("display_name"),
     supabase.from("memberships").select("user_id, role").eq("tenant_id", company.tenant_id),
     supabase
       .from("invitations")
@@ -144,7 +167,7 @@ export default async function TeamPage({
   return (
     <div className={styles.page}>
       <h1>Team</h1>
-      {done && <p className="notice" role="status">{{ role: "Role changed.", deactivated: "Deactivated. They can no longer sign in to this company.", reactivated: "Reactivated.", revoked: "Invite canceled." }[done] ?? "Saved."}</p>}
+      {done && <p className="notice" role="status">{{ saved: "Saved.", role: "Role changed.", deactivated: "Deactivated. They can no longer sign in to this company.", reactivated: "Reactivated.", revoked: "Invite canceled." }[done] ?? "Saved."}</p>}
 
       <section aria-labelledby="invite" className={styles.invite}>
         <h2 id="invite">Invite someone</h2>
@@ -212,6 +235,13 @@ export default async function TeamPage({
                 </div>
                 <button className="button" type="submit">Save crew</button>
               </form>
+              <form action={saveCrew} className={styles.inlineRow}>
+                <input type="hidden" name="crew_id" value={c.id} />
+                <label htmlFor={`cn-${c.id}`}>Rename</label>
+                <input id={`cn-${c.id}`} name="crew_name" defaultValue={c.name} className="input" maxLength={80} />
+                <button className="button quiet" type="submit">Save name</button>
+                <button className="button quiet" type="submit" name="active" value="off">Retire crew</button>
+              </form>
             </details>
           );
         })}
@@ -238,6 +268,15 @@ export default async function TeamPage({
                     {e.status === "inactive" ? "Inactive" : e.user_id ? (roleOf.get(e.user_id) ?? "Member") : "Not signed up"}
                   </span>
                 </summary>
+                <form action={saveEmployee} className={styles.rateForm}>
+                  <input type="hidden" name="employee_id" value={e.id} />
+                  <div className="field"><label htmlFor={`en-${e.id}`}>Name</label><input id={`en-${e.id}`} name="display_name" required defaultValue={e.display_name} className="input" /></div>
+                  <div className="field"><label htmlFor={`ee-${e.id}`}>Email</label><input id={`ee-${e.id}`} name="email" type="email" defaultValue={e.email ?? ""} className="input" /></div>
+                  <div className="field"><label htmlFor={`ep-${e.id}`}>Phone</label><input id={`ep-${e.id}`} name="phone" type="tel" defaultValue={e.phone ?? ""} className="input" /></div>
+                  <div className="field"><label htmlFor={`eh-${e.id}`}>Hired</label><input id={`eh-${e.id}`} name="hired_on" type="date" defaultValue={e.hired_on ?? ""} className="input" /></div>
+                  <div className="field"><label htmlFor={`eo-${e.id}`}>Notes (office only)</label><input id={`eo-${e.id}`} name="notes" defaultValue={e.notes ?? ""} className="input" /></div>
+                  <button className="button quiet" type="submit">Save details</button>
+                </form>
                 <form action={setPayRate} className={styles.rateForm}>
                   <input type="hidden" name="employee_id" value={e.id} />
                   <div className="field">
