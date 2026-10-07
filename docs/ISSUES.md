@@ -28,7 +28,7 @@ P0 = do now · P1 = Phase 1 blocker · P2 = Phase 2 · P3 = later. "Owner" is wh
 | P1-4 | **Tenant isolation test suite as CI release blocker** | Done: runs locally, in CI (PG17) and on staging |
 | P1-5 | Schema: `employees`, `crews`, `crew_members`, `properties`, `tenant_settings.timezone`, `audit_log`, `activity` | Done; on staging |
 | P1-6 | Audit-log triggers on time entries, memberships, invoices, payments, clients, jobs | Done; on staging |
-| P1-7 | Auth: OTP/magic link, invites, org switcher | Done (web); mobile invite deep link next |
+| P1-7 | Auth: email code, invites, org switcher | Done (web + mobile; web accepts the typed code on any device) |
 | P1-8 | Staging Supabase project (needs Chad's OK; handoff says no new projects without instruction) | **Done**: crew-clock-staging (free); migrations + tests run from GitHub |
 | P1-9 | Sentry + structured logging | Open |
 
@@ -73,7 +73,16 @@ Patching these in Flask would change historical payroll numbers mid-stream. They
 - Playwright smoke tests once a hosted staging web exists
 - Google Sheets hours export (needs a Google service account: owner setup)
 
+- Error reporting (Sentry free tier or similar) on web + mobile before TestFlight (needs an account: owner OK)
+- App Review demo sign-in (a review account that doesn't need an inbox)
+- "Close my company" flow for a sole owner deleting their account (Apple guideline 5.1.1(v))
+- Per-email throttle on web code sign-in (all checks come from the server's IP)
+- Supabase redirect URL allow-list kept exact (no wildcards) at cutover
+
 ## Owner decisions pending
+- Protect `main` (required review, no direct pushes) and mark PR #1 draft until the Flask deploy is approved: today one Merge click redeploys the live clock
+- Support email and legal sign-off for /privacy and /terms (drafts in place)
+- Apple Developer ($99/yr) and Google Play ($25 once) accounts; EAS project link
 - Email provider (e.g. Postmark/Resend/SES) and SMS provider (e.g. Twilio) + turning on live messaging (`private.platform_flags.live_messaging`)
 - Paid road routing (Google Route Optimization / Mapbox) if straight-line ordering isn't good enough
 - Hosting for web + scheduler; Supabase Pro; Apple Developer account

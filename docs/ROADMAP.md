@@ -25,8 +25,11 @@ Built and tested on staging (open PRs, stacked; nothing merged or deployed to pr
 | #17 | Billing: invoice everyone, charges, voids, letterhead, settings, expenses | 12 |
 | #18 | Team admin; crew breaks, problem reports; phone works offline | 10 |
 | #19 | Ops: lockfile + npm ci, staging backups, **tested emergency revert** | revert check |
+| #20 | Readiness gaps: expenses in profitability, services, editing, shared offline queue, recurring tests | 30+ |
+| #21 | Production prep (dedicated project move, backups, sign-in email) + delete account, legal drafts, code sign-in | move check |
+| #22 | Second-audit fixes: pay/hours controls, break fixes, expense voids, reopen visits, phone problems to office, shared-phone safety, backups rehearsed | 70+ |
 
-Product-readiness audit (2026-10-06): see the owner's doc "Crew Clock product-readiness audit". All development findings fixed; owner decisions listed there.
+Product-readiness audits: first (2026-10-06) and second (2026-10-07), both in the owner's doc "Crew Clock product-readiness audit". Development findings fixed; owner decisions listed there and in docs/PRODUCTION_PLAN.md.
 
 Waiting on owner decisions: production migrations and cutover, hosting (Vercel/Supabase Pro), email/SMS provider and enabling live messaging, paid routing provider, Apple Developer account.
 
@@ -40,8 +43,8 @@ Waiting on owner decisions: production migrations and cutover, hosting (Vercel/S
 - [x] Read-only Supabase inspection script
 - [x] Security hotfix for the live Flask app (branch `phase-0-audit`)
 - [ ] Set `SECRET_KEY` on Render if unset, deploy hotfix (Claude via Render connector, with Chad's OK: production deploy)
-- [ ] Confirm Render disk / `DB_PATH` (Claude, via Render connector); back up SQLite and Google Sheet before migration
-- [ ] Review live Supabase schema/RLS (Claude, via Supabase connector; replaces the manual script)
+- [x] Confirm Render disk / `DB_PATH` (no disk: SQLite never kept history; the Sheet is the record)
+- [x] Review live Supabase schema/RLS (docs/PRODUCTION_RECONCILIATION.md)
 - [x] Architecture approved by Chad 2026-10-05 (ADR 0001)
 
 **Done when:** hotfix is live, backups exist (SQLite dump if a disk exists, plus Sheet CSV export), Supabase reviewed, architecture approved.
