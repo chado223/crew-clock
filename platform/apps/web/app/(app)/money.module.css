@@ -45,3 +45,5 @@
 @media (max-width: 760px) {
   .row { grid-template-columns: 1fr auto; }
 }
+.lineEdit summary { cursor: pointer; color: var(--turf); font-weight: 600; font-size: 0.9rem; }
+.lineEdit[open] { margin-bottom: 6px; }

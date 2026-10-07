@@ -69,6 +69,19 @@ const MESSAGES: Record<string, string> = {
   message_not_queued: "That message already went out or was stopped.",
   invalid_link: "That link isn't valid.",
   invalid_channel: "Pick email or text.",
+  job_has_history: "This job has finished visits, so its customer can't change. End it and create a new job instead.",
+  visit_has_history: "Finished work can't be moved to another job.",
+  property_has_active_jobs: "End or move this property's active jobs first.",
+  invoice_has_payments: "Void the payments on this invoice first.",
+  client_change_not_allowed: "Preferences belong to one customer.",
+  lead_not_on_crew: "The crew lead has to be on the crew.",
+  import_too_large: "Import up to 2,000 rows at a time.",
+  invalid_import: "That file couldn't be read.",
+  title_required: "Give it a name.",
+  invalid_interval: "Pick how many weeks between visits (1 to 52).",
+  invalid_weekday: "Pick a day of the week.",
+  not_recurring: "Only repeating jobs have a day and frequency.",
+  invalid_group: "Pick how to group the report.",
 };
 
 /** Map a Supabase/Postgres error to a message a person can act on. */
@@ -80,5 +93,8 @@ export function friendlyError(err: unknown): string {
         ? String((err as { message: unknown }).message)
         : "";
   const key = raw.split(":")[0]?.trim() ?? "";
-  return MESSAGES[key] ?? "Something went wrong. Try again, and contact support if it keeps happening.";
+  if (MESSAGES[key]) return MESSAGES[key]!;
+  // A sentence the app wrote for the person (not a database key) is shown as is.
+  if (typeof err === "string" && /\s/.test(raw) && /[.!?]$/.test(raw)) return raw;
+  return "Something went wrong. Try again, and contact support if it keeps happening.";
 }

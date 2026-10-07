@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
+import { createQueue, type Queued } from "@crew/shared";
 import { supabase } from "./supabase";
 
 /**
@@ -19,42 +20,7 @@ export type FieldAction =
   | { kind: "break_end"; tenantId: string }
   | { kind: "report_problem"; tenantId: string; visitId: string; reason: string };
 
-export type QueuedAction = FieldAction & { eventId: string; at: string; attempts: number };
-
-export interface Rejection {
-  action: QueuedAction;
-  error: unknown;
-}
-
-const KEY = "crew.actionQueue.v2";
-const LEGACY_KEY = "crew.punchQueue.v1";
-
-async function load(): Promise<QueuedAction[]> {
-  const raw = await AsyncStorage.getItem(KEY);
-  const legacy = await AsyncStorage.getItem(LEGACY_KEY);
-  if (legacy) {
-    // Carry forward punches saved by the previous app version.
-    const old = JSON.parse(legacy) as QueuedAction[];
-    const merged = [...old, ...(raw ? (JSON.parse(raw) as QueuedAction[]) : [])];
-    await AsyncStorage.setItem(KEY, JSON.stringify(merged));
-    await AsyncStorage.removeItem(LEGACY_KEY);
-    return merged;
-  }
-  return raw ? (JSON.parse(raw) as QueuedAction[]) : [];
-}
-
-async function save(queue: QueuedAction[]) {
-  await AsyncStorage.setItem(KEY, JSON.stringify(queue));
-}
-
-export async function pendingActions() {
-  return load();
-}
-
-function isNetworkError(err: unknown) {
-  const msg = err instanceof Error ? err.message : String((err as { message?: unknown })?.message ?? err);
-  return /network|fetch|timeout|offline|Failed to fetch/i.test(msg);
-}
+export type QueuedAction = Queued<FieldAction>;
 
 async function send(a: QueuedAction) {
   let result;
@@ -86,41 +52,28 @@ async function send(a: QueuedAction) {
   if (result.error) throw result.error;
 }
 
-/**
- * Record an action. Resolves "sent" when the server confirmed it, "queued"
- * when offline. Throws when the server rejects THIS action so the screen can
- * explain why.
- */
-export async function perform(action: FieldAction): Promise<"sent" | "queued"> {
-  const a = { ...action, eventId: Crypto.randomUUID(), at: new Date().toISOString(), attempts: 0 } as QueuedAction;
-  await save([...(await load()), a]);
-  const { rejected } = await flush();
-  const mine = rejected.find((r) => r.action.eventId === a.eventId);
-  if (mine) throw mine.error;
-  return (await load()).some((q) => q.eventId === a.eventId) ? "queued" : "sent";
-}
+const queue = createQueue<FieldAction>({
+  storage: {
+    get: (k) => AsyncStorage.getItem(k),
+    set: (k, v) => AsyncStorage.setItem(k, v),
+    remove: (k) => AsyncStorage.removeItem(k),
+  },
+  key: "crew.actionQueue.v2",
+  legacyKeys: ["crew.punchQueue.v1"],
+  send,
+  newId: () => Crypto.randomUUID(),
+  isNetworkError: (err) => {
+    const msg = err instanceof Error ? err.message : String((err as { message?: unknown })?.message ?? err);
+    return /network|fetch|timeout|offline|Failed to fetch/i.test(msg);
+  },
+});
 
-/** Send queued actions oldest first; stop at the first connectivity failure. */
-export async function flush(): Promise<{ rejected: Rejection[] }> {
-  const rejected: Rejection[] = [];
-  let queue = await load();
-  while (queue.length > 0) {
-    const next = queue[0]!;
-    try {
-      await send(next);
-    } catch (err) {
-      if (isNetworkError(err)) {
-        next.attempts += 1;
-        await save(queue);
-        break;
-      }
-      rejected.push({ action: next, error: err });
-    }
-    queue = queue.slice(1);
-    await save(queue);
-  }
-  return { rejected };
-}
+/** Record an action: "sent" when confirmed, "queued" when offline; throws when refused. */
+export const perform = queue.perform;
+/** Send waiting actions oldest first; stops at the first connectivity failure. */
+export const flush = queue.flush;
+export const pendingActions = queue.pending;
+export type { Rejection } from "@crew/shared";
 
 /** What the person should see while actions are still waiting to send. */
 export function pendingClockState(queue: QueuedAction[]): { onClock: boolean; since: string } | null {

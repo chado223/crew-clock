@@ -69,9 +69,13 @@ async function addJob(formData: FormData) {
   const price = Number(formData.get("price") ?? "");
   const minutes = Number(formData.get("est_minutes") ?? "");
   const crew = String(formData.get("crew_id") ?? "");
-  const title = String(formData.get("title") ?? "").trim();
+  const serviceId = String(formData.get("service_id") ?? "");
+  const { data: svc } = serviceId
+    ? await supabase.from("services").select("id, name, default_price, default_minutes").eq("id", serviceId).maybeSingle()
+    : { data: null };
+  const title = String(formData.get("title") ?? "").trim() || (svc?.name as string | undefined) || "";
   const fail = (msg: string): never => redirect(`/clients/${id}?error=${encodeURIComponent(msg)}`);
-  if (!title) fail("Name the job, e.g. Weekly mow & edge.");
+  if (!title) fail("Name the job or pick a service.");
   if (!date) fail("Pick a date.");
 
   const startDow = ((new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7) + 1; // ISO weekday of the chosen date
@@ -84,8 +88,9 @@ async function addJob(formData: FormData) {
       title,
       kind,
       status: "active",
-      price: Number.isFinite(price) && price > 0 ? price : null,
-      est_minutes: Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : null,
+      service_id: svc?.id ?? null,
+      price: Number.isFinite(price) && price > 0 ? price : (svc?.default_price as number | null) ?? null,
+      est_minutes: Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : (svc?.default_minutes as number | null) ?? null,
       crew_id: crew || null,
       ...(kind === "recurring"
         ? { starts_on: date, weekday: startDow, interval_weeks: Number(formData.get("interval_weeks") ?? 1) }
@@ -306,6 +311,8 @@ export default async function ClientPage({
     supabase.from("properties").select("*").eq("client_id", id).order("created_at"),
     supabase.from("activity").select("id, kind, summary, occurred_at").eq("client_id", id).order("occurred_at", { ascending: false }).order("seq", { ascending: false }).limit(100),
   ]);
+  const { data: services } = await supabase.from("services").select("id, name, default_price, default_minutes")
+    .eq("tenant_id", company.tenant_id).eq("active", true).order("name");
   const [{ data: jobs }, { data: crews }, { data: upcoming }] = await Promise.all([
     supabase.from("jobs").select("id, title, kind, status, price, est_minutes, crew_id, interval_weeks, weekday, ends_on, property_id, crews(name)").eq("client_id", id).order("created_at"),
     supabase.from("crews").select("id, name").eq("tenant_id", company.tenant_id).eq("active", true).order("name"),
@@ -448,7 +455,17 @@ export default async function ClientPage({
                 <summary>Add a job</summary>
                 <form action={addJob} className={styles.propForm}>
                   <input type="hidden" name="client_id" value={client.id} />
-                  <div className="field"><label htmlFor="jt">What you'll do</label><input id="jt" name="title" required className="input" placeholder="e.g. Mow, edge and blow" /></div>
+                  {(services ?? []).length > 0 && (
+                    <div className="field">
+                      <label htmlFor="js">Service</label>
+                      <select id="js" name="service_id" className="select" defaultValue="">
+                        <option value="">None / custom</option>
+                        {(services ?? []).map((v) => <option key={v.id} value={v.id}>{v.name}{v.default_price != null ? ` ($${Number(v.default_price).toFixed(2)})` : ""}</option>)}
+                      </select>
+                      <p className="hint">Fills in the name, price and time unless you type your own.</p>
+                    </div>
+                  )}
+                  <div className="field"><label htmlFor="jt">What you'll do</label><input id="jt" name="title" className="input" placeholder="e.g. Mow, edge and blow" /></div>
                   <div className="field">
                     <label htmlFor="jp">Property</label>
                     <select id="jp" name="property_id" className="select">
