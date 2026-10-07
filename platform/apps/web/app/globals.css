@@ -63,6 +63,8 @@ a { color: var(--turf); }
 .button:disabled { opacity: 0.6; cursor: progress; }
 .button.quiet { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
 .button.quiet:hover { box-shadow: inset 0 0 0 1.5px var(--ink-soft); }
+.button.danger { background: var(--error); }
+.button.danger:hover { filter: brightness(0.92); }
 
 .field { display: grid; gap: 6px; }
 .field label { font-weight: 600; font-size: 0.95rem; }

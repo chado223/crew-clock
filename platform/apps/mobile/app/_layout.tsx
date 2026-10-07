@@ -52,6 +52,7 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="visit/[id]" options={{ headerShown: true, title: "Stop", headerBackTitle: "Today" }} />
+        <Stack.Screen name="account" options={{ headerShown: true, title: "Account", headerBackTitle: "Back" }} />
       </Stack>
     </CompanyProvider>
   );

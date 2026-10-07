@@ -3,7 +3,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
-const PUBLIC_PATHS = ["/login", "/auth/callback"];
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/privacy", "/terms"];
 // /portal and /invite require sign-in like everything else; the database decides what each person may see.
 
 /** Keeps the Supabase session fresh and sends signed-out visitors to /login. */

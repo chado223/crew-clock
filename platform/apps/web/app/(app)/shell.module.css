@@ -46,7 +46,8 @@
 }
 .links a:hover { background: #223228; }
 
-.signOut { margin-top: auto; padding: 0 8px; }
+.signOut { margin-top: auto; padding: 0 8px; display: flex; gap: 16px; align-items: center; }
+.signOut a { color: #b9c6b6; font: 500 0.95rem var(--font-text); text-decoration: none; }
 .signOut button {
   background: none;
   border: 0;

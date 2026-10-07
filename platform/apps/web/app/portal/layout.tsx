@@ -44,7 +44,7 @@ export default async function PortalLayout({ children }: { children: React.React
             <button type="submit" className="button quiet">Switch</button>
           </form>
         )}
-        <form action={signOut}><button type="submit" className={styles.signOut}>Sign out</button></form>
+        <form action={signOut}><Link href="/account" className={styles.signOut}>Account</Link> <button type="submit" className={styles.signOut}>Sign out</button></form>
       </header>
       {account && (
         <nav className={styles.nav} aria-label="Account">
