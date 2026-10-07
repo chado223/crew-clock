@@ -1,0 +1,68 @@
+name: Production (approval required)
+
+# Runs ONLY against crew-clock-prod, ONLY from the `production-ops` branch, and
+# ONLY after Chad approves the run (GitHub Environment "production" with a
+# required reviewer holds the database connection secret). The action comes
+# from .github/production/request.txt. It never touches the old shared project
+# or staging, and never sends messages.
+
+on:
+  push:
+    branches: [production-ops]
+    paths: [".github/production/request.txt"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+      - name: Read requested action
+        id: req
+        run: |
+          action="$(grep -E '^action=' .github/production/request.txt | tail -1 | cut -d= -f2 | tr -d '[:space:]')"
+          case "$action" in check|migrate|preflight) ;; *) echo "::error::unknown action '$action'"; exit 1;; esac
+          echo "action=$action" >> "$GITHUB_OUTPUT"
+          echo "::notice title=production::requested action: $action"
+      - name: Install psql 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+      - name: Guard (must be crew-clock-prod)
+        env:
+          DB_URL: ${{ secrets.PROD_DB_URL }}
+        run: bash .github/scripts/require-production.sh
+      - name: State
+        env:
+          DB_URL: ${{ secrets.PROD_DB_URL }}
+        run: |
+          psql "$DB_URL" -X -At -c "select 'public tables: ' || count(*) from pg_tables where schemaname = 'public'
+            union all select 'migrations recorded: ' || coalesce((select count(*)::text from supabase_migrations.schema_migrations), '0')
+            union all select 'companies: ' || coalesce((select count(*)::text from public.tenants), 'n/a')" 2>/dev/null \
+            | sed 's/^/::notice title=state::/' || echo "::notice title=state::empty project"
+      - name: Apply migrations and mark as production
+        if: steps.req.outputs.action == 'migrate'
+        env:
+          DB_URL: ${{ secrets.PROD_DB_URL }}
+        run: |
+          bash platform/supabase/scripts/apply_migrations.sh
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -c "update private.platform_flags set enabled = true, updated_at = now() where key = 'production'"
+          psql "$DB_URL" -X -At -c "select key || '=' || enabled from private.platform_flags order by key" | sed 's/^/::notice title=flags::/'
+      - name: Preflight (read-only)
+        if: steps.req.outputs.action == 'preflight' || steps.req.outputs.action == 'migrate'
+        env:
+          DB_URL: ${{ secrets.PROD_DB_URL }}
+        run: |
+          latest="$(ls platform/supabase/migrations/*.sql | sort | tail -1 | xargs basename | cut -d_ -f1)"
+          psql "$DB_URL" -X -At -F ' | ' -v expected_latest="$latest" -f platform/supabase/ops/preflight.sql > preflight.txt
+          sed 's/^t | /::notice title=pass::/; s/^f | /::warning title=not yet::/' preflight.txt

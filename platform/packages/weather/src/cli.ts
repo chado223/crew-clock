@@ -16,7 +16,7 @@ const fetcher: Fetcher = (url, init) => fetch(url, { ...init, signal: AbortSigna
 const log = (m: string) => console.log(`[weather] ${m}`);
 
 // Production projects (keep in step with platform/production-projects.txt), plus any given at run time.
-const PRODUCTION_REFS = ["iwowjrnrbjiydckhjsfi", ...(process.env.PRODUCTION_PROJECT_REFS ?? "").split(",").map((r) => r.trim()).filter(Boolean)];
+const PRODUCTION_REFS = ["iwowjrnrbjiydckhjsfi", "kymnehbnmqvpzwtxtizm", ...(process.env.PRODUCTION_PROJECT_REFS ?? "").split(",").map((r) => r.trim()).filter(Boolean)];
 
 /** Test runs also refuse any database that marks itself as production. */
 async function refuseProductionDatabase(c: { query(sql: string): Promise<{ rows: Record<string, unknown>[] }> }) {
