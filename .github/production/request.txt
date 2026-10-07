@@ -5,3 +5,4 @@
 #   migrate   - apply every migration with the checked script, mark it production
 #   preflight - read-only: run platform/supabase/ops/preflight.sql
 action=check
+# run 1: 2026-10-07T16:40:58Z read-only identity check
