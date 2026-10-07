@@ -54,14 +54,18 @@ export default async function TodayPage() {
   const yesterday = localDate(new Date(now.getTime() - 86_400_000), company.timezone);
   const week = weekStart(now, company.timezone);
   const none = Promise.resolve({ data: null, error: null });
+  let fillFailed = false;
   if (manager) {
     // Keep the next three weeks filled from recurring jobs (idempotent; the background job does this too once hosted).
     const until = localDate(new Date(now.getTime() + 21 * 86_400_000), company.timezone);
     const { error: fillError } = await supabase.rpc("generate_visits", { p_tenant_id: company.tenant_id, p_from: today, p_to: until });
-    if (fillError) console.error("[today] schedule fill failed:", fillError.message);
+    if (fillError) {
+      fillFailed = true;
+      console.error("[today] schedule fill failed:", fillError.message);
+    }
   }
 
-  const [{ data: shifts, error: shiftsError }, { data: weekly, error: weeklyError }, { data: ov }, { data: att }, { data: sched }] = await Promise.all([
+  const [{ data: shifts, error: shiftsError }, { data: weekly, error: weeklyError }, { data: ov, error: ovError }, { data: att, error: attError }, { data: sched }] = await Promise.all([
     supabase.rpc("timesheet", { p_tenant_id: company.tenant_id, p_from: yesterday, p_to: today }),
     supabase.rpc("weekly_hours", { p_tenant_id: company.tenant_id, p_week_start: week }),
     manager ? supabase.rpc("owner_overview", { p_tenant_id: company.tenant_id }) : none,
@@ -100,6 +104,15 @@ export default async function TodayPage() {
         </p>
       </header>
 
+      {(ovError || attError || fillFailed) && (
+        <p className="error-text" role="alert">
+          {attError ? "The attention list couldn't load, so it may be missing items. " : ""}
+          {ovError ? "Today's numbers couldn't load. " : ""}
+          {fillFailed ? "Recurring visits couldn't be added to the schedule just now. " : ""}
+          Reload the page; if it keeps happening, check Schedule directly.
+        </p>
+      )}
+
       {o && (
         <section aria-labelledby="day" className={styles.overview}>
           <h2 id="day" className={styles.srOnly}>The day so far</h2>
@@ -108,7 +121,7 @@ export default async function TodayPage() {
               "No visits scheduled today."
             ) : (
               <>
-                <span className="figure">{o.visits_today.done}</span> of {o.visits_today.total} visits done
+                <Link href={`/routes?date=${today}`}><span className="figure">{o.visits_today.done}</span> of {o.visits_today.total} visits done</Link>
                 {o.visits_today.working > 0 && <>, {o.visits_today.working} in progress</>}
                 {o.visits_today.skipped > 0 && <>, {o.visits_today.skipped} skipped</>}.{" "}
                 <span className="figure">{money(o.visits_today.value_done)}</span> of {money(scheduledValue)} scheduled work finished.
@@ -116,7 +129,7 @@ export default async function TodayPage() {
             )}
           </p>
           <p className={styles.money}>
-            This week: {money(o.work_done.week)} of work done, {money(o.collected.week)} collected.{" "}
+            This week: <Link href="/insights">{money(o.work_done.week)} of work done</Link>, <Link href="/insights">{money(o.collected.week)} collected</Link>.{" "}
             Customers owe {money(o.receivables.open)}
             {o.receivables.overdue > 0 && <>, <Link href="/insights#receivables">{money(o.receivables.overdue)} overdue</Link></>}.
             {o.estimates_waiting.count > 0 && <> <Link href="/estimates">{money(o.estimates_waiting.value)} in estimates</Link> waiting on customers.</>}
@@ -128,7 +141,9 @@ export default async function TodayPage() {
       {manager && (
         <section aria-labelledby="todo" className={styles.block}>
           <h2 id="todo">Needs attention {items.length > 0 && <span className={styles.badge}>{items.length}</span>}</h2>
-          {items.length === 0 ? (
+          {attError ? (
+            <p className={styles.empty}>Couldn&apos;t check right now.</p>
+          ) : items.length === 0 ? (
             <p className={styles.empty}>Nothing waiting on you.</p>
           ) : (
             <div className={styles.groups}>

@@ -32,6 +32,32 @@ async function add(formData: FormData) {
   redirect(`/expenses${error ? `?error=${encodeURIComponent(friendlyError(error))}` : "?saved=1"}`);
 }
 
+async function edit(formData: FormData) {
+  "use server";
+  const id = String(formData.get("id"));
+  const month = String(formData.get("month") ?? "");
+  const amount = Number(formData.get("amount"));
+  if (!Number.isFinite(amount) || amount <= 0) redirect(`/expenses?month=${month}&error=${encodeURIComponent("Enter an amount greater than zero.")}`);
+  const { error } = await (await supabaseServer()).from("expenses").update({
+    category: String(formData.get("category") || "Other"),
+    amount: Math.round(amount * 100) / 100,
+    spent_at: String(formData.get("spent_at")),
+    note: String(formData.get("note") ?? "").trim() || null,
+  }).eq("id", id);
+  revalidatePath("/expenses");
+  redirect(`/expenses?month=${month}${error ? `&error=${encodeURIComponent(friendlyError(error))}` : "&saved=edit"}`);
+}
+
+async function voidIt(formData: FormData) {
+  "use server";
+  const month = String(formData.get("month") ?? "");
+  const { error } = await (await supabaseServer()).rpc("void_expense", {
+    p_expense_id: String(formData.get("id")), p_reason: String(formData.get("reason") ?? ""),
+  });
+  revalidatePath("/expenses");
+  redirect(`/expenses?month=${month}${error ? `&error=${encodeURIComponent(friendlyError(error))}` : "&saved=void"}`);
+}
+
 export default async function ExpensesPage({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string; month?: string }> }) {
   const { company } = await currentCompany();
   if (!isManager(company)) redirect("/");
@@ -43,21 +69,23 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
   const end = endDate.toISOString().slice(0, 10);
   const supabase = await supabaseServer();
   const [{ data: rows }, { data: visits }, { data: jobRows }, { data: clientRows }] = await Promise.all([
-    supabase.from("expenses").select("id, category, amount, spent_at, note, visit_id, job_id, client_id, clients(name), jobs(title)").eq("tenant_id", company.tenant_id)
+    supabase.from("expenses").select("id, category, amount, spent_at, note, visit_id, job_id, client_id, voided_at, void_reason, clients(name), jobs(title)").eq("tenant_id", company.tenant_id)
       .gte("spent_at", start).lte("spent_at", end).order("spent_at", { ascending: false }).limit(500),
     supabase.rpc("schedule", { p_tenant_id: company.tenant_id, p_from: start, p_to: end }),
     supabase.from("jobs").select("id, title, clients(name)").eq("tenant_id", company.tenant_id).in("status", ["scheduled", "active"]).order("title").limit(500),
     supabase.from("clients").select("id, name").eq("tenant_id", company.tenant_id).in("status", ["active", "lead"]).order("name").limit(1000),
   ]);
   const list = (rows ?? []) as unknown as { id: string; category: string; amount: number; spent_at: string; note: string | null; visit_id: string | null;
-    job_id: string | null; client_id: string | null; clients: { name: string } | null; jobs: { title: string } | null }[];
+    job_id: string | null; client_id: string | null; voided_at: string | null; void_reason: string | null;
+    clients: { name: string } | null; jobs: { title: string } | null }[];
+  const live = list.filter((e) => !e.voided_at);
   const jobs = (jobRows ?? []) as unknown as { id: string; title: string; clients: { name: string } | null }[];
   const customers = (clientRows ?? []) as { id: string; name: string }[];
   const done = ((visits ?? []) as { visit_id: string; scheduled_date: string; client_name: string | null; job_title: string; status: string }[])
     .filter((v) => v.status === "completed");
   const byCat = new Map<string, number>();
-  for (const e of list) byCat.set(e.category, (byCat.get(e.category) ?? 0) + Number(e.amount));
-  const total = list.reduce((n, e) => n + Number(e.amount), 0);
+  for (const e of live) byCat.set(e.category, (byCat.get(e.category) ?? 0) + Number(e.amount));
+  const total = live.reduce((n, e) => n + Number(e.amount), 0);
   const prev = new Date(`${start}T12:00:00Z`); prev.setUTCMonth(prev.getUTCMonth() - 1);
   const next = new Date(`${start}T12:00:00Z`); next.setUTCMonth(next.getUTCMonth() + 1);
   const label = new Date(`${start}T12:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
@@ -71,7 +99,9 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
           <a className="button quiet" href={`/expenses?month=${next.toISOString().slice(0, 7)}`}>Next month</a>
         </nav>
       </header>
-      {sp.saved && <p className="notice" role="status">Expense added. It counts in Business health and, if tied to a visit, in that job&apos;s profit.</p>}
+      {sp.saved === "1" && <p className="notice" role="status">Expense added. It counts in Business health and, if tied to a visit, in that job&apos;s profit.</p>}
+      {sp.saved === "edit" && <p className="notice" role="status">Expense updated.</p>}
+      {sp.saved === "void" && <p className="notice" role="status">Expense voided. It no longer counts anywhere, and stays listed here for the record.</p>}
       {sp.error && <p className="error-text" role="alert">{sp.error}</p>}
 
       <section className={styles.panel} aria-labelledby="add">
@@ -104,11 +134,38 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
       {list.length === 0 ? <p className={styles.empty}>No expenses this month.</p> : (
         <ul className={styles.list}>
           {list.map((e) => (
-            <li key={e.id} className={styles.row}>
+            <li key={e.id} className={styles.row} style={e.voided_at ? { opacity: 0.55 } : undefined}>
               <span>{e.spent_at}</span>
               <span>{e.category}{e.clients?.name ? ` · ${e.clients.name}` : ""}{e.jobs?.title ? ` · ${e.jobs.title}` : ""}{!e.client_id && !e.job_id ? " · overhead" : ""}</span>
-              <span>{e.note}</span>
-              <span className={styles.num}>{formatMoney(e.amount)}</span>
+              <span>{e.voided_at ? `Voided: ${e.void_reason ?? ""}` : e.note}</span>
+              <span className={styles.num} style={e.voided_at ? { textDecoration: "line-through" } : undefined}>{formatMoney(e.amount)}</span>
+              {!e.voided_at && (
+                <details style={{ gridColumn: "1 / -1" }}>
+                  <summary>Edit or void</summary>
+                  <form action={edit} className={styles.form}>
+                    <input type="hidden" name="id" value={e.id} />
+                    <input type="hidden" name="month" value={month} />
+                    <div className="field"><label htmlFor={`c-${e.id}`}>Category</label>
+                      <select id={`c-${e.id}`} name="category" className="select" defaultValue={e.category}>
+                        {[...new Set([...CATEGORIES, e.category])].map((c) => <option key={c}>{c}</option>)}
+                      </select></div>
+                    <div className="field"><label htmlFor={`a-${e.id}`}>Amount ($)</label>
+                      <input id={`a-${e.id}`} name="amount" type="number" min={0.01} step="0.01" required className="input" defaultValue={e.amount} /></div>
+                    <div className="field"><label htmlFor={`d-${e.id}`}>Date</label>
+                      <input id={`d-${e.id}`} name="spent_at" type="date" required className="input" defaultValue={e.spent_at} /></div>
+                    <div className="field"><label htmlFor={`n-${e.id}`}>Note</label>
+                      <input id={`n-${e.id}`} name="note" className="input" defaultValue={e.note ?? ""} /></div>
+                    <button className="button" type="submit">Save changes</button>
+                  </form>
+                  <form action={voidIt} className={styles.form}>
+                    <input type="hidden" name="id" value={e.id} />
+                    <input type="hidden" name="month" value={month} />
+                    <div className="field"><label htmlFor={`r-${e.id}`}>Reason to void</label>
+                      <input id={`r-${e.id}`} name="reason" required minLength={3} className="input" placeholder="e.g. entered twice" /></div>
+                    <button className="button quiet" type="submit">Void expense</button>
+                  </form>
+                </details>
+              )}
             </li>
           ))}
         </ul>

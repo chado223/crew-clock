@@ -95,3 +95,6 @@ a { color: var(--turf); }
 }
 
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Set by the submit guard while a form is being saved. */
+button[aria-busy="true"] { opacity: 0.6; cursor: progress; }

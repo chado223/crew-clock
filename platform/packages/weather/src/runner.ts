@@ -101,7 +101,14 @@ export async function runWeather(db: WeatherDb, opts: RunOptions): Promise<RunSu
   }
 
   for (const tenant of await db.enabledTenants()) {
-    s.alertsOpened += await db.evaluate(tenant);
+    // One company's problem doesn't stop the others from getting their alerts.
+    try {
+      s.alertsOpened += await db.evaluate(tenant);
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      s.skipped.push({ property_id: `company:${tenant}`, reason });
+      log(`evaluate ${tenant} failed: ${reason}`);
+    }
   }
   log(`done: ${JSON.stringify({ ...s, skipped: s.skipped.length })}`);
   return s;

@@ -22,13 +22,15 @@ set role authenticated;
 create temp table preview as select public.import_customers('aaaaaaaa-0000-0000-0000-000000000000', (select j from src), true) as r;
 select tests.is((select (r->>'clients')::int from preview), 3, 'Preview: 3 customers would be created');
 select tests.is((select (r->>'jobs')::int from preview), 3, 'Preview: 3 jobs');
-select tests.is((select jsonb_array_length(r->'skipped') from preview), 2, 'Preview: 2 duplicates skipped (in file, already a customer)');
+select tests.is((select jsonb_array_length(r->'skipped') from preview), 1, 'Preview: 1 duplicate skipped (already a customer)');
 select tests.is((select jsonb_array_length(r->'errors') from preview), 5, 'Preview: 5 rows with problems');
 select tests.ok((select r->'errors' from preview)::text like '%Price isn''t a number: forty%', 'Errors say what is wrong');
 select tests.is((select count(*) from public.clients where name in ('Ann Able','Bob Bee','Cara Cee')), 0::bigint, 'Preview creates nothing');
 
 create temp table done as select public.import_customers('aaaaaaaa-0000-0000-0000-000000000000', (select j from src), false) as r;
-select tests.is((select (r->>'clients')::int || '/' || (r->>'properties') || '/' || (r->>'jobs') from done), '3/3/3', 'Import created 3 customers, 3 properties, 3 jobs');
+select tests.is((select (r->>'clients')::int || '/' || (r->>'properties') || '/' || (r->>'jobs') from done), '3/4/3', 'Import created 3 customers, 4 properties (Ann has two), 3 jobs');
+select tests.is((select count(*) from public.properties p join public.clients c on c.id = p.client_id where c.name = 'Ann Able'), 2::bigint,
+  'Same customer on two rows with different addresses: one customer, two properties');
 select tests.is((select region || ':' || lawn_sqft from public.properties where address_line1 = '10 Oak St'), 'TN:8000', 'Address cleaned up');
 select tests.is((select interval_weeks || ':' || weekday || ':' || price from public.jobs where title = 'Mow & edge' and client_id =
   (select id from public.clients where name = 'Ann Able')), '1:2:45.00', 'Weekly on Tuesday at $45');

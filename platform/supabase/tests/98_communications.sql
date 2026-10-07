@@ -159,6 +159,14 @@ create temp table claimed as select * from public.messages_worker_claim(100);
 select tests.ok((select count(*) from claimed) >= 3, 'Dispatcher claims queued messages');
 select tests.is((select count(*) from claimed where status <> 'sending'), 0::bigint, 'Claimed messages are marked sending');
 select tests.is((select count(*) from public.messages_worker_claim(100)), 0::bigint, 'Nothing is claimed twice');
+reset role;
+-- A worker that died mid-send: its claim is recovered after 15 minutes, not before.
+alter table public.messages disable trigger set_updated_at;
+update public.messages set updated_at = now() - interval '20 minutes' where id = (select id from claimed order by id limit 1);
+alter table public.messages enable trigger set_updated_at;
+set role service_role;
+select tests.is((select count(*) from public.messages_worker_claim(100)), 1::bigint, 'A message stuck in sending for 15+ minutes is retried');
+select tests.is((select count(*) from public.messages_worker_claim(100)), 0::bigint, 'Recently claimed messages are left alone');
 select public.messages_worker_result((select id from ids where k = 'inv'), true, 'log', 'log-1');
 select tests.is((select status || ':' || provider from public.messages where id = (select id from ids where k = 'inv')), 'sent:log', 'Sent result recorded');
 select public.messages_worker_result((select id from ids where k = 'flagoff'), false, 'log', null, 'timeout', true);

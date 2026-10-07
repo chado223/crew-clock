@@ -1,44 +1,82 @@
-name: Staging backup (nightly pg_dump)
+name: Backup rehearsal (staging dump -> restore -> verify)
 
-# Rehearses the backup the production runbook relies on, against staging.
-# Scheduled runs happen from the default branch only. Free GitHub artifacts,
-# kept 14 days. Targets ONLY crew-clock-staging.
+# Rehearses the production backup procedure against crew-clock-staging:
+# dump every non-system schema (including sign-ins and the migration history),
+# restore it into a throwaway Postgres on the runner, and check that row counts
+# match table by table. Nothing is uploaded: this repository is public, so dumps
+# never leave the runner. Production backups go to a private, encrypted store
+# (docs/PRODUCTION_PLAN.md, Part 2).
 
 on:
+  push:
+    branches: ["phase-*"]
+    paths: [".github/workflows/staging-backup.yml", "platform/supabase/migrations/**"]
   schedule:
-    - cron: "43 7 * * *"
+    - cron: "43 7 * * *"   # from the default branch only
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: staging-backup
+  cancel-in-progress: true
+
 jobs:
-  backup:
+  rehearse:
     runs-on: ubuntu-latest
     env:
-      DB_URL: ${{ secrets.STAGING_DB_URL }}
+      HAS_DB: ${{ secrets.STAGING_DB_URL != '' }}
+    services:
+      restore:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
+      - uses: actions/checkout@v5
       - name: Guard
-        run: |
-          case "$DB_URL" in
-            *newivmnolbzhjypusmob*) echo "Target: crew-clock-staging";;
-            *) echo "::error::Not the staging project. Refusing."; exit 1;;
-          esac
+        if: env.HAS_DB == 'true'
+        env:
+          DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: bash .github/scripts/require-staging.sh
       - name: Install pg_dump 17
+        if: env.HAS_DB == 'true'
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
-      - name: Dump
+      - name: Dump (read-only)
+        if: env.HAS_DB == 'true'
+        env:
+          DB_URL: ${{ secrets.STAGING_DB_URL }}
         run: |
-          stamp=$(date -u +%Y%m%dT%H%MZ)
-          pg_dump "$DB_URL" -n public -n private -n storage -n supabase_migrations -Fc -f "staging-$stamp.dump"
-          pg_dump "$DB_URL" -n public -n private --schema-only -f "staging-schema-$stamp.sql"
-          ls -la
-          echo "::notice title=backup::$(du -h staging-$stamp.dump | cut -f1) dump written"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: staging-backup
-          path: staging-*
-          retention-days: 14
+          pg_dump "$DB_URL" -n public -n private -n auth -n storage -n supabase_migrations -Fc -f "$RUNNER_TEMP/staging.dump"
+          psql "$DB_URL" -X -At -c "select n.nspname||'.'||c.relname, (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', n.nspname, c.relname), false, true, '')))[1]::text::bigint
+            from pg_class c join pg_namespace n on n.oid = c.relnamespace
+            where c.relkind = 'r' and n.nspname in ('public','private','auth','storage','supabase_migrations') order by 1" > "$RUNNER_TEMP/source-counts.txt"
+          echo "::notice title=backup::$(du -h "$RUNNER_TEMP/staging.dump" | cut -f1) dump, $(wc -l < "$RUNNER_TEMP/source-counts.txt") tables"
+      - name: Restore into a throwaway database and compare
+        if: env.HAS_DB == 'true'
+        env:
+          PGPASSWORD: postgres
+        run: |
+          R="postgresql://postgres:postgres@localhost:5432/postgres"
+          # Supabase's own roles and helper schemas don't exist here; create the bare minimum the dump refers to.
+          for role in anon authenticated service_role supabase_admin supabase_auth_admin supabase_storage_admin authenticator dashboard_user; do
+            psql "$R" -X -q -c "do \$\$ begin create role $role nologin; exception when duplicate_object then null; end \$\$;"
+          done
+          psql "$R" -X -q -c "create schema if not exists extensions; create extension if not exists pgcrypto with schema extensions; create extension if not exists \"uuid-ossp\" with schema extensions; create extension if not exists btree_gist;"
+          pg_restore --no-owner --no-privileges -d "$R" "$RUNNER_TEMP/staging.dump" 2> "$RUNNER_TEMP/restore.log" || true
+          psql "$R" -X -At -c "select n.nspname||'.'||c.relname, (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', n.nspname, c.relname), false, true, '')))[1]::text::bigint
+            from pg_class c join pg_namespace n on n.oid = c.relnamespace
+            where c.relkind = 'r' and n.nspname in ('public','private','auth','storage','supabase_migrations') order by 1" > "$RUNNER_TEMP/restored-counts.txt"
+          if diff <(grep '^public\.\|^private\.\|^auth\.users\|^supabase_migrations\.' "$RUNNER_TEMP/source-counts.txt") \
+                  <(grep '^public\.\|^private\.\|^auth\.users\|^supabase_migrations\.' "$RUNNER_TEMP/restored-counts.txt") > "$RUNNER_TEMP/diff.txt"; then
+            echo "::notice title=backup::restore verified: every public/private table, sign-ins and migration history match"
+          else
+            echo "::error title=backup::restored row counts differ"; head -40 "$RUNNER_TEMP/diff.txt"; grep -i error "$RUNNER_TEMP/restore.log" | head -20; exit 1
+          fi

@@ -1,0 +1,3 @@
+# Supabase project refs that are PRODUCTION. Staging tools and CI refuse these.
+# Add the dedicated production project's ref here BEFORE cutover.
+iwowjrnrbjiydckhjsfi  current shared production project (read-only to us)

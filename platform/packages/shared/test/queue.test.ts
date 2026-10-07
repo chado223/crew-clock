@@ -112,3 +112,60 @@ test("old app version's saved punches are carried forward first", async () => {
   assert.deepEqual(sent.slice(0, 1), ["old1"]);
   assert.equal(s.data.has("legacy"), false);
 });
+
+test("refusals stay on the phone's problem list until dismissed, and the office is told", async () => {
+  let online = false;
+  const told: string[] = [];
+  const q = createQueue<A>({
+    ...opts(memory(), async (a) => { if (!online) throw netErr(); if (a.kind === "in") throw new Error("punch_too_old"); }),
+    onReject: async (r) => { told.push(String((r.error as Error).message)); },
+  });
+  await q.perform({ kind: "in" });
+  online = true;
+  await q.flush();
+  const p = await q.problems();
+  assert.equal(p.length, 1);
+  assert.equal(p[0]!.error, "punch_too_old");
+  assert.deepEqual(told, ["punch_too_old"]);
+  await q.dismissProblem(p[0]!.action.eventId);
+  assert.equal((await q.problems()).length, 0);
+});
+
+test("a server hiccup or expired sign-in is retried, not dropped", async () => {
+  let mode: "500" | "ok" = "500";
+  const sent: string[] = [];
+  const q = createQueue<A>({
+    storage: memory(), key: "q", newId: () => `h${++id}`,
+    send: async (a) => { if (mode === "500") throw Object.assign(new Error("Internal Server Error"), { status: 500 }); sent.push(a.kind); },
+    classify: (e) => ((e as { status?: number }).status ?? 0) >= 500 ? "retry" : "reject",
+  });
+  assert.equal(await q.perform({ kind: "out" }), "queued");
+  assert.equal((await q.problems()).length, 0);
+  mode = "ok";
+  await q.flush();
+  assert.deepEqual(sent, ["out"]);
+});
+
+test("shared phone: one person's saved actions are never sent under another's sign-in", async () => {
+  let who: string | null = "amy";
+  let online = false;
+  const sentAs: string[] = [];
+  const q = createQueue<A>({
+    ...opts(memory(), async (a) => { if (!online) throw netErr(); sentAs.push(`${a.kind}:${who}`); }),
+    owner: async () => who,
+  });
+  await q.perform({ kind: "out" });                  // Amy clocks out with no signal
+  who = null;                                       // signs out
+  online = true;
+  await q.flush();
+  assert.deepEqual(sentAs, [], "nothing sent while signed out");
+  who = "ben";                                      // Ben signs in on the same phone
+  assert.equal(await q.perform({ kind: "in" }), "sent");
+  assert.deepEqual(sentAs, ["in:ben"], "only Ben's own action went");
+  assert.equal(await q.heldForOthers(), 1);
+  assert.equal((await q.pending()).length, 0, "Ben doesn't see Amy's action as his");
+  who = "amy";
+  await q.flush();
+  assert.deepEqual(sentAs, ["in:ben", "out:amy"]);
+  assert.equal(await q.heldForOthers(), 0);
+});

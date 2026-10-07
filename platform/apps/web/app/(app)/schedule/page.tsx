@@ -97,6 +97,19 @@ async function markDone(formData: FormData) {
   done(week, error ? { error: friendlyError(error) } : { saved: "Marked done. It can be invoiced now." });
 }
 
+async function reopenVisit(formData: FormData) {
+  "use server";
+  const week = String(formData.get("week"));
+  const date = String(formData.get("date") ?? "");
+  const { error } = await (await supabaseServer()).rpc("reopen_visit", {
+    p_visit_id: String(formData.get("visit_id")),
+    p_date: date || (null as unknown as string),
+    p_reason: String(formData.get("reason") ?? ""),
+  });
+  revalidatePath("/schedule");
+  done(week, error ? { error: friendlyError(error) } : { saved: "Back on the schedule." });
+}
+
 async function assignVisit(formData: FormData) {
   "use server";
   const week = String(formData.get("week"));
@@ -244,6 +257,18 @@ export default async function SchedulePage({
                             <label htmlFor={`n-${v.visit_id}`}>Note (optional)</label>
                             <input id={`n-${v.visit_id}`} name="notes" className="input" placeholder="e.g. Crew forgot to tap Done" />
                             <button className="button" type="submit">Mark done</button>
+                          </form>
+                        )}
+                        {(v.status === "skipped" || v.status === "canceled" || v.status === "completed") && (
+                          <form action={reopenVisit} className={styles.cardForm}>
+                            <input type="hidden" name="visit_id" value={v.visit_id} />
+                            <input type="hidden" name="week" value={week} />
+                            <label htmlFor={`o-${v.visit_id}`}>{v.status === "completed" ? "Undo done (not yet billed)" : "Put back on the schedule"}</label>
+                            <input id={`o-${v.visit_id}`} type="date" name="date" defaultValue={v.status === "completed" ? v.scheduled_date : today} className="input" />
+                            <label htmlFor={`or-${v.visit_id}`}>Reason</label>
+                            <input id={`or-${v.visit_id}`} name="reason" required minLength={3} className="input"
+                              placeholder={v.status === "completed" ? "e.g. marked done by mistake" : "e.g. make-up visit after rain"} />
+                            <button className="button quiet" type="submit">{v.status === "completed" ? "Undo done" : "Reschedule"}</button>
                           </form>
                         )}
                         {v.status === "scheduled" && (

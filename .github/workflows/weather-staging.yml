@@ -13,16 +13,20 @@ on:
   schedule:
     - cron: "17 10 * * *"   # daily, early morning US Eastern (runs from the default branch only)
 
+# Own queue, so a migrations run on the same commit can't push this one out.
+permissions:
+  contents: read
+
 concurrency:
-  group: staging-db
+  group: staging-automation
   cancel-in-progress: false
 
 jobs:
   weather:
     runs-on: ubuntu-latest
     env:
-      DB_URL: ${{ secrets.STAGING_DB_URL }}
       WEATHER_CONTACT: github.com/chado223/crew-clock
+      HAS_DB: ${{ secrets.STAGING_DB_URL != '' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -31,7 +35,7 @@ jobs:
       - name: Install (isolated)
         run: |
           cp -r platform/packages/weather "$RUNNER_TEMP/weather"
-          cd "$RUNNER_TEMP/weather" && npm install --no-audit --no-fund
+          cd "$RUNNER_TEMP/weather" && npm install --no-audit --no-fund --ignore-scripts
       - name: Unit tests + typecheck
         working-directory: ${{ runner.temp }}/weather
         run: |
@@ -42,33 +46,35 @@ jobs:
         working-directory: ${{ runner.temp }}/weather
         run: node src/cli.ts probe 35.8906 -83.7743
       - name: Guard against production
-        if: env.DB_URL != ''
-        run: |
-          case "$DB_URL" in
-            *iwowjrnrbjiydckhjsfi*) echo "::error::STAGING_DB_URL points at PRODUCTION. Refusing."; exit 1;;
-            *newivmnolbzhjypusmob*) echo "Target: crew-clock-staging";;
-            *) echo "::error::STAGING_DB_URL is not the crew-clock-staging project. Refusing."; exit 1;;
-          esac
+        if: env.HAS_DB == 'true'
+        env:
+          DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: bash .github/scripts/require-staging.sh
       - name: Install psql 17
-        if: env.DB_URL != ''
+        if: env.HAS_DB == 'true'
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
       - name: Apply migrations to staging (idempotent)
-        if: env.DB_URL != ''
-        run: bash platform/supabase/scripts/apply_migrations.sh
+        if: env.HAS_DB == 'true'
+        env:
+          DB_URL: ${{ secrets.STAGING_DB_URL }}
+        # The migrations workflow may be applying the same files right now; one retry settles it.
+        run: bash platform/supabase/scripts/apply_migrations.sh || { sleep 45; bash platform/supabase/scripts/apply_migrations.sh; }
       - name: End-to-end on staging (rolled back)
-        if: env.DB_URL != ''
+        if: env.HAS_DB == 'true'
         working-directory: ${{ runner.temp }}/weather
+        env:
+          DB_URL: ${{ secrets.STAGING_DB_URL }}
         run: node src/cli.ts e2e
 
   messages:
     needs: weather   # same staging database; run one after the other
     runs-on: ubuntu-latest
     env:
-      DB_URL: ${{ secrets.STAGING_DB_URL }}
+      HAS_DB: ${{ secrets.STAGING_DB_URL != '' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -77,7 +83,7 @@ jobs:
       - name: Install (isolated)
         run: |
           cp -r platform/packages/messaging "$RUNNER_TEMP/messaging"
-          cd "$RUNNER_TEMP/messaging" && npm install --no-audit --no-fund
+          cd "$RUNNER_TEMP/messaging" && npm install --no-audit --no-fund --ignore-scripts
       - name: Unit tests + typecheck
         working-directory: ${{ runner.temp }}/messaging
         run: |
@@ -85,13 +91,13 @@ jobs:
           npm test 2>&1 | tee /tmp/unit.txt || { grep -E "not ok|Error" /tmp/unit.txt | head -20 | sed 's/^/::error title=messages-unit::/'; exit 1; }
           npx tsc --noEmit -p . 2>&1 | tee /tmp/tsc.txt || { grep "error TS" /tmp/tsc.txt | head -20 | sed 's/^/::error title=messages-tsc::/'; exit 1; }
       - name: Guard against production
-        if: env.DB_URL != ''
-        run: |
-          case "$DB_URL" in
-            *newivmnolbzhjypusmob*) echo "Target: crew-clock-staging";;
-            *) echo "::error::STAGING_DB_URL is not the crew-clock-staging project. Refusing."; exit 1;;
-          esac
+        if: env.HAS_DB == 'true'
+        env:
+          DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: bash .github/scripts/require-staging.sh
       - name: End-to-end on staging (rolled back, log provider only)
-        if: env.DB_URL != ''
+        if: env.HAS_DB == 'true'
         working-directory: ${{ runner.temp }}/messaging
+        env:
+          DB_URL: ${{ secrets.STAGING_DB_URL }}
         run: node src/cli.ts e2e

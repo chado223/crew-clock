@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
 import { safeNext } from "@/lib/company";
+import { siteOrigin } from "@/lib/origin";
 import styles from "../auth.module.css";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -14,7 +14,7 @@ async function sendLink(formData: FormData) {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     redirect(`/login?error=email&next=${encodeURIComponent(next)}`);
   }
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? `https://${(await headers()).get("host")}`;
+  const origin = await siteOrigin();
   const supabase = await supabaseServer();
   const { error } = await supabase.auth.signInWithOtp({
     email,
