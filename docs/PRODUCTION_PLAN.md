@@ -176,5 +176,10 @@ Sign-in is by a 6-digit emailed code (web and mobile). Supabase's built-in maile
 3. **(me)** Paste the templates into Auth → Email Templates, then test sign-in codes to your own address only.
 4. Customer/employee messages (reminders, invoices, invites) stay in test mode until you separately approve live messaging.
 
-### What I need from you to finish this part
-- Does CWLC have a domain for email (the part after the @ in your business email)? If not, buying one is a small paid decision.
+### Settings (decided 2026-10-07)
+- Sending domain: **chadwashamlawns.com** (verified in Resend with the DNS records it shows).
+- Sign-in emails from: `Chad Washam Lawncare <noreply@chadwashamlawns.com>`.
+- Replies and contact: `chadwashamlawncare@gmail.com`.
+- Supabase Auth → SMTP: host `smtp.resend.com`, port `465`, user `resend`, password = the Resend API key (pasted by Chad), sender name `Chad Washam Lawncare`, sender email `noreply@chadwashamlawns.com`.
+- Auth email rate limit raised from the default (about 30/hour) to 100/hour, which matches Resend's free daily allowance.
+- Customer/employee messages: still test mode, all three locks on.
