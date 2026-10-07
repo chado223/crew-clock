@@ -35,3 +35,5 @@ jobs:
         run: bash platform/supabase/tests/run.sh
       - name: Emergency revert script returns production's starting point exactly
         run: bash platform/supabase/tests/revert/check_revert.sh
+      - name: Move to a dedicated project (export -> import) preserves every row and leaves the old project untouched
+        run: bash platform/supabase/tests/move/check_move.sh
