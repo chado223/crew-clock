@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AppState, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, useFocusEffect } from "expo-router";
+import { Link, useFocusEffect, useRouter } from "expo-router";
 import { elapsedSince, formatClockTime, formatDuration, friendlyError, googleRouteUrl, type NavTarget, type TimeEntry } from "@crew/shared";
 import { supabase } from "../../lib/supabase";
 import { companyToday, useCompany } from "../../lib/company";
@@ -12,6 +12,7 @@ import type { Stop } from "../../lib/stops";
 import { color, font } from "../../lib/theme";
 
 export default function TodayScreen() {
+  const router = useRouter();
   const { company, loading: companyLoading, reload: reloadCompany } = useCompany();
   const [open, setOpen] = useState<TimeEntry | null>(null);
   const [stops, setStops] = useState<Stop[]>([]);
@@ -122,8 +123,8 @@ export default function TodayScreen() {
           <Pressable onPress={reloadCompany} accessibilityRole="button" style={styles.secondary}>
             <Text style={styles.secondaryText}>Check again</Text>
           </Pressable>
-          <Pressable onPress={() => supabase.auth.signOut()} accessibilityRole="button" hitSlop={12}>
-            <Text style={styles.link}>Sign out</Text>
+          <Pressable onPress={() => router.push("/account")} accessibilityRole="button" hitSlop={12}>
+            <Text style={styles.link}>Sign out or delete account</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -143,8 +144,8 @@ export default function TodayScreen() {
       <ScrollView contentContainerStyle={styles.body} refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} />}>
         <View style={styles.top}>
           <Text style={styles.company}>{company.name}</Text>
-          <Pressable onPress={() => supabase.auth.signOut()} accessibilityRole="button" hitSlop={12}>
-            <Text style={styles.link}>Sign out</Text>
+          <Pressable onPress={() => router.push("/account")} accessibilityRole="button" hitSlop={12}>
+            <Text style={styles.link}>Account</Text>
           </Pressable>
         </View>
 

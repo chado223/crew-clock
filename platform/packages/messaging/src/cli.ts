@@ -2,6 +2,7 @@
 //   node src/cli.ts run   one pass against DB_URL (log provider; live held unless MESSAGING_LIVE=1)
 //   node src/cli.ts e2e   queue + dispatch on a throwaway test company inside a transaction, then ROLLBACK
 import { dispatch, pgMessagesDb } from "./dispatcher.ts";
+import { emailProviderFromEnv } from "./resend.ts";
 
 const log = (m: string) => console.log(`[messages] ${m}`);
 function fail(msg: string): never {
@@ -22,7 +23,9 @@ async function connect() {
 async function run() {
   const c = await connect();
   try {
-    const s = await dispatch(pgMessagesDb(c), { allowLive: process.env.MESSAGING_LIVE === "1", log });
+    // Email provider is the log provider unless EMAIL_PROVIDER=resend (not configured anywhere yet).
+    const email = emailProviderFromEnv(process.env);
+    const s = await dispatch(pgMessagesDb(c), { allowLive: process.env.MESSAGING_LIVE === "1", log, providers: email ? { email } : {} });
     console.log(`::notice title=messages-run::${JSON.stringify(s)}`);
   } finally {
     await c.end();

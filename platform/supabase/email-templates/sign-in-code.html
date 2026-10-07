@@ -1,0 +1,8 @@
+<!-- Supabase Auth → Email Templates → "Magic Link" (also used for email OTP).
+     Subject: Your Crew Clock sign-in code: {{ .Token }} -->
+<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1a1a1a">
+  <p style="font-size:16px;margin:0 0 16px">Here's your sign-in code:</p>
+  <p style="font-size:32px;font-weight:700;letter-spacing:6px;margin:0 0 16px;font-family:ui-monospace,Menlo,monospace">{{ .Token }}</p>
+  <p style="font-size:14px;color:#555;margin:0 0 8px">Type it into the Crew Clock app or website. It works once and expires in one hour.</p>
+  <p style="font-size:13px;color:#777;margin:24px 0 0">If you didn't ask to sign in, you can ignore this email — nobody can get in without the code.</p>
+</div>

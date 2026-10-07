@@ -106,6 +106,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           )}
         </ul>
         <form action={signOut} className={styles.signOut}>
+          <Link href="/account">Account</Link>
           <button type="submit">Sign out</button>
         </form>
       </nav>
