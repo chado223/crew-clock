@@ -4,5 +4,6 @@
 #   check     - read-only: confirm the target is crew-clock-prod and print its state
 #   migrate   - apply every migration with the checked script, mark it production
 #   preflight - read-only: run platform/supabase/ops/preflight.sql
-action=check
+action=migrate
 # run 1: 2026-10-07T16:40:58Z read-only identity check
+# run 2: 2026-10-07T16:45:09Z apply migrations (schema only, no data), mark production, preflight
