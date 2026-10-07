@@ -169,3 +169,21 @@ test("shared phone: one person's saved actions are never sent under another's si
   assert.deepEqual(sentAs, ["in:ben", "out:amy"]);
   assert.equal(await q.heldForOthers(), 0);
 });
+
+test("if telling the office fails, it's retried on the next send", async () => {
+  let officeUp = false;
+  let online = false;
+  const told: string[] = [];
+  const q = createQueue<A>({
+    ...opts(memory(), async (a) => { if (!online) throw netErr(); if (a.kind === "out") throw new Error("punch_too_old"); }),
+    onReject: async (r) => { if (!officeUp) throw netErr(); told.push(r.action.kind); },
+  });
+  await q.perform({ kind: "out" });
+  online = true;
+  await q.flush();
+  assert.equal((await q.problems())[0]!.reported, false);
+  officeUp = true;
+  await q.flush();
+  assert.deepEqual(told, ["out"]);
+  assert.equal((await q.problems())[0]!.reported, true);
+});

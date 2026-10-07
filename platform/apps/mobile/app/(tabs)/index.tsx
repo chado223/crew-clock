@@ -223,7 +223,7 @@ export default function TodayScreen() {
         {problems.map((p) => (
           <View key={p.action.eventId} style={styles.problem}>
             <Text style={styles.problemText}>
-              Not recorded: {labelFor(p.action.kind)} at {formatClockTime(p.action.at, company.timezone)}. {friendlyError(p.error)} The office has been told.
+              Not recorded: {labelFor(p.action.kind)} at {formatClockTime(p.action.at, company.timezone)}. {friendlyError(p.error)} {p.reported === false ? "The office will be told when there's signal." : "The office has been told."}
             </Text>
             <Pressable accessibilityRole="button" hitSlop={10} onPress={async () => { await dismissSyncProblem(p.action.eventId); setProblems(await syncProblems()); }}>
               <Text style={styles.link}>OK</Text>

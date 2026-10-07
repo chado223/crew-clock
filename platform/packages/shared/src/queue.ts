@@ -53,6 +53,8 @@ export interface Problem<A> {
   action: Queued<A>;
   error: string;
   at: string;
+  /** False until the office has been told; retried on every send run. */
+  reported?: boolean;
 }
 
 const errText = (e: unknown) =>
@@ -91,6 +93,23 @@ export function createQueue<A extends object>(o: QueueOptions<A>) {
     const rejected: Rejection<A>[] = [];
     const me = await whoAmI();
     if (o.owner && !me) return { rejected };   // signed out: hold everything
+    // Tell the office about earlier refusals whose report didn't get through.
+    if (o.onReject) {
+      const list = await loadProblems();
+      let changed = false;
+      for (const p of list) {
+        if (p.reported !== false || !mine(p.action, me)) continue;
+        if (await o.onReject({ action: p.action, error: new Error(p.error) }).then(() => true, () => false)) {
+          p.reported = true;
+          changed = true;
+        }
+      }
+      if (changed) {
+        // Merge onto a fresh read so nothing added meanwhile is lost.
+        const done = new Set(list.filter((p) => p.reported).map((p) => p.action.eventId));
+        await o.storage.set(problemsKey, JSON.stringify((await loadProblems()).map((p) => (done.has(p.action.eventId) ? { ...p, reported: true } : p))));
+      }
+    }
     for (;;) {
       const list = await load();
       const next = list.find((q) => mine(q, me));
@@ -105,10 +124,11 @@ export function createQueue<A extends object>(o: QueueOptions<A>) {
         }
         const r = { action: next, error: err };
         rejected.push(r);
+        let reported = !o.onReject;
+        if (o.onReject) reported = await o.onReject(r).then(() => true, () => false);
         await o.storage.set(problemsKey, JSON.stringify([
-          ...(await loadProblems()), { action: next, error: errText(err), at: now().toISOString() },
+          ...(await loadProblems()), { action: next, error: errText(err), at: now().toISOString(), reported },
         ]));
-        await o.onReject?.(r).catch(() => {});
       }
       // Re-read before removing: actions added while sending must survive.
       const fresh = await load();

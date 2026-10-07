@@ -64,3 +64,14 @@ insert into public.time_entries (tenant_id, user_id, employee_id, clock_in, cloc
   ('aaaaaaaa-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000003', 'ea000000-0000-0000-0000-000000000003', '2026-09-15 13:00+00', '2026-09-15 14:00+00', 'app');
 select tests.is((select onsite_minutes || '/' || overhead_minutes || '/' || labor_cost from public.visit_costing('aaaaaaaa-0000-0000-0000-000000000000', '2026-09-14', '2026-09-15')
   where visit_id = '88888888-0000-0000-0000-000000000010'), '60/0/18.00', 'Work done a day late is costed once: 1 h on site, no extra overhead, $18');
+
+-- A canceled visit can't be reopened onto a day the job already has a visit.
+select v.id as canc, v.scheduled_date as cday from public.visits v
+ where v.client_id = 'c1a00000-0000-0000-0000-000000000001' and v.status = 'canceled' and v.status_reason = 'Customer inactive'
+   and exists (select 1 from public.visits o where o.job_id = v.job_id and o.status = 'scheduled' and o.scheduled_date = v.scheduled_date)
+ limit 1 \gset
+select tests.login('a0000000-0000-0000-0000-000000000002');
+set role authenticated;
+select tests.throws(format($$select public.reopen_visit(%L, null, 'customer came back')$$, :'canc'), '%visit_already_scheduled%',
+  'Reopening a canceled visit onto a day already filled is refused');
+reset role;

@@ -80,9 +80,10 @@ const queue = createQueue<FieldAction>({
   // Let the office know, so hours can be fixed; the phone keeps it on its problem list too.
   onReject: async ({ action, error }) => {
     const message = error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error);
-    await supabase.rpc("report_sync_problem", {
+    const { error: reportError } = await supabase.rpc("report_sync_problem", {
       p_tenant_id: action.tenantId, p_kind: action.kind, p_at: action.at, p_error: message, p_client_event_id: action.eventId,
     });
+    if (reportError) throw reportError; // kept as "not yet reported" and retried on the next send
   },
 });
 

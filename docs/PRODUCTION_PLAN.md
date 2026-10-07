@@ -59,7 +59,7 @@ Every step below needs your go-ahead once; steps marked **(you)** need your hand
 | 5 | Export from the old project with `ops/0003_export_for_dedicated_project.sql`. It runs in a **read-only transaction** — Postgres itself refuses any write. Also confirm with a read-only count that the old project has no stored files (photos); it had none at inspection. The export holds customer contact details, so it's handled like the backups: never committed, deleted after the move. | me, read-only | n/a |
 | 6 | Import into the new project with `ops/0004_import_into_dedicated_project.sql`. It keeps every original id, date and amount. It refuses: any database that isn't a fully migrated, empty Crew Clock project (so the old project is refused by design, not by luck); and any exported column the new schema doesn't have (named in the error, never silently dropped). It checks row counts and money totals, and it's all-or-nothing. | me | Re-create project |
 | 7 | You sign in to the new project once (email code). Then `ops/0001_link_production_owner.sql` makes `chadwasham64@gmail.com` the owner. | **you** + me | Yes |
-| 8 | Point the web and mobile app settings at the new project's URL and public key. | me | Yes, point back |
+| 8 | Point the web and mobile app settings at the new project's URL and public key. | me | See Rollback (the old project can't run the new app) |
 | 9 | Run the end-to-end checks against production as you (sign in, see the company, customer, invoice and expenses; clock in/out on a test employee and void it). | me + you | Voids are audited, nothing deleted |
 | 10 | Old project stays as-is, read-only by habit, for at least 90 days. Retiring it is a separate decision. | — | — |
 
