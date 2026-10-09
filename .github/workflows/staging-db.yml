@@ -38,12 +38,7 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
       - name: Guard against production
         if: steps.secret.outputs.present == 'true'
-        run: |
-          case "$DB_URL" in
-            *iwowjrnrbjiydckhjsfi*) echo "::error::STAGING_DB_URL points at PRODUCTION. Refusing."; exit 1;;
-            *newivmnolbzhjypusmob*) echo "Target: crew-clock-staging";;
-            *) echo "::error::STAGING_DB_URL is not the crew-clock-staging project. Refusing."; exit 1;;
-          esac
+        run: bash .github/scripts/require-staging.sh
       - name: Apply migrations to staging
         if: steps.secret.outputs.present == 'true'
         run: bash platform/supabase/scripts/apply_migrations.sh

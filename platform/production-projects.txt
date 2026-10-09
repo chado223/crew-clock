@@ -1,0 +1,4 @@
+# Supabase project refs that are PRODUCTION. Staging tools and CI refuse these.
+# The first column is the ref; the rest is a note.
+iwowjrnrbjiydckhjsfi  old shared production project (frozen archive; read-only to us)
+kymnehbnmqvpzwtxtizm  crew-clock-prod, CWLC org, us-east-2 (dedicated production)

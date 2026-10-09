@@ -84,7 +84,14 @@ export async function dispatch(db: MessagesDb, opts: DispatchOptions = {}): Prom
       s.heldLive++;
       continue;
     }
-    const provider = opts.providers?.[m.channel] ?? logProvider(m.channel, log);
+    const real = opts.providers?.[m.channel];
+    if (m.mode === "live" && !real) {
+      // Live but no real provider for this channel (e.g. SMS not set up): hold it, never "send" it to the log.
+      await db.result(m.id, false, "none", null, `no ${m.channel} provider configured`, true);
+      s.heldLive++;
+      continue;
+    }
+    const provider = real ?? logProvider(m.channel, log);
     if (provider.channel !== m.channel) throw new Error(`provider ${provider.name} cannot send ${m.channel}`);
     let r: SendResult;
     try {

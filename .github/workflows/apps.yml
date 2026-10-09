@@ -5,6 +5,7 @@ on:
     paths: ["platform/apps/**", "platform/packages/**", "platform/package.json", "platform/package-lock.json", ".github/workflows/apps.yml"]
   pull_request:
     paths: ["platform/apps/**", "platform/packages/**", "platform/package.json", "platform/package-lock.json", ".github/workflows/apps.yml"]
+  workflow_dispatch:   # the lockfile workflow re-runs this after committing a new lockfile
 
 jobs:
   apps:

@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useFocusEffect, useRouter } from "expo-router";
 import { elapsedSince, formatClockTime, formatDuration, friendlyError, googleRouteUrl, type NavTarget, type TimeEntry } from "@crew/shared";
 import { supabase } from "../../lib/supabase";
 import { companyToday, useCompany } from "../../lib/company";
-import { flush, pendingActions, pendingBreakState, pendingClockState, pendingVisitStatus, perform, type QueuedAction } from "../../lib/actionQueue";
+import {
+  dismissSyncProblem, flush, heldForOthers, pendingActions, pendingBreakState, pendingClockState, pendingVisitStatus, perform, syncProblems,
+  type QueuedAction,
+} from "../../lib/actionQueue";
 import { readCache, saveCache } from "../../lib/cache";
 import { flushPhotos } from "../../lib/photos";
 import type { Stop } from "../../lib/stops";
@@ -13,7 +16,7 @@ import { color, font } from "../../lib/theme";
 
 export default function TodayScreen() {
   const router = useRouter();
-  const { company, loading: companyLoading, reload: reloadCompany } = useCompany();
+  const { company, loading: companyLoading, reload: reloadCompany, offline: companyOffline, error: companyError } = useCompany();
   const [open, setOpen] = useState<TimeEntry | null>(null);
   const [stops, setStops] = useState<Stop[]>([]);
   const [queued, setQueued] = useState<QueuedAction[]>([]);
@@ -22,12 +25,19 @@ export default function TodayScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [onBreak, setOnBreak] = useState(false);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const [noData, setNoData] = useState(false);
+  const [problems, setProblems] = useState<Awaited<ReturnType<typeof syncProblems>>>([]);
+  const [held, setHeld] = useState(0);
+  const [photoFailures, setPhotoFailures] = useState(0);
+  const acting = useRef(false); // blocks a double tap before the screen re-renders
 
   const refresh = useCallback(async () => {
-    const { rejected } = await flush().catch(() => ({ rejected: [] }));
-    await flushPhotos().catch(() => undefined);
-    if (rejected.length > 0) setMessage(`Something saved on this phone couldn't be recorded: ${friendlyError(rejected[0]!.error)}`);
+    await flush().catch(() => undefined);
+    const photos = await flushPhotos().catch(() => ({ failed: 0 }));
+    if (photos.failed > 0) setPhotoFailures((n) => n + photos.failed);
     setQueued(await pendingActions());
+    setProblems(await syncProblems());
+    setHeld(await heldForOthers());
     if (!company?.employee_id) return;
 
     const today = companyToday(company.timezone);
@@ -47,6 +57,7 @@ export default function TodayScreen() {
       setOnBreak(!!e?.time_entry_breaks?.some((b) => b.ended_at === null));
       setStops((sched ?? []) as Stop[]);
       setCachedAt(null);
+      setNoData(false);
       await saveCache(company.tenant_id, "today", { day: today, entry: e, stops: sched ?? [] });
     } else {
       // No signal: show the last copy of today saved on this phone.
@@ -56,6 +67,9 @@ export default function TodayScreen() {
         setOnBreak(!!c.value.entry?.time_entry_breaks?.some((b) => b.ended_at === null));
         setStops(c.value.stops);
         setCachedAt(c.at);
+        setNoData(false);
+      } else {
+        setNoData(true);
       }
     }
   }, [company]);
@@ -68,9 +82,14 @@ export default function TodayScreen() {
 
   useEffect(() => {
     const tick = setInterval(() => setNow(new Date()), 15_000);
+    // Signal comes back while the screen is open: keep trying to send what's waiting.
+    const retry = setInterval(async () => {
+      if ((await pendingActions()).length > 0) refresh();
+    }, 45_000);
     const sub = AppState.addEventListener("change", (s) => s === "active" && refresh());
     return () => {
       clearInterval(tick);
+      clearInterval(retry);
       sub.remove();
     };
   }, [refresh]);
@@ -83,7 +102,8 @@ export default function TodayScreen() {
   const breakNow = onClock && (pendingBreak ?? onBreak);
 
   async function onBreakTap() {
-    if (!company) return;
+    if (!company || acting.current) return;
+    acting.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -94,11 +114,13 @@ export default function TodayScreen() {
     } finally {
       await refresh();
       setBusy(false);
+      acting.current = false;
     }
   }
 
   async function onPunch() {
-    if (!company) return;
+    if (!company || acting.current) return;
+    acting.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -109,10 +131,26 @@ export default function TodayScreen() {
     } finally {
       await refresh();
       setBusy(false);
+      acting.current = false;
     }
   }
 
   if (companyLoading) return <SafeAreaView style={styles.safe} />;
+
+  if (!company && companyError && !companyOffline) {
+    // No signal on first open and nothing saved yet: don't claim they have no team.
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.center}>
+          <Text style={styles.title}>No signal</Text>
+          <Text style={styles.lede}>Crew needs signal once to load your company on this phone. After that it works without signal.</Text>
+          <Pressable onPress={reloadCompany} accessibilityRole="button" style={styles.secondary}>
+            <Text style={styles.secondaryText}>Try again</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!company) {
     return (
@@ -131,7 +169,8 @@ export default function TodayScreen() {
     );
   }
 
-  const remaining = stops.filter((s) => !["completed", "skipped", "canceled"].includes(pendingVisitStatus(queued, s.visit_id) ?? s.status));
+  const shown = stops.filter((s) => s.status !== "canceled");
+  const remaining = shown.filter((s) => !["completed", "skipped", "canceled"].includes(pendingVisitStatus(queued, s.visit_id) ?? s.status));
   // The whole rest of the day in Google Maps, in the office's order, from where the phone is.
   const routeUrl = googleRouteUrl(
     remaining
@@ -171,15 +210,37 @@ export default function TodayScreen() {
         {queued.length > 0 && (
           <Text style={styles.queued}>{queued.length} {queued.length === 1 ? "update" : "updates"} waiting for signal</Text>
         )}
+        {held > 0 && (
+          <Text style={styles.queued}>
+            {held} {held === 1 ? "update" : "updates"} saved by someone else on this phone will send when they sign back in.
+          </Text>
+        )}
+        {photoFailures > 0 && (
+          <Text style={styles.message}>
+            {photoFailures === 1 ? "A photo" : `${photoFailures} photos`} couldn't be attached (the stop may have been removed). Tell the office.
+          </Text>
+        )}
+        {problems.map((p) => (
+          <View key={p.action.eventId} style={styles.problem}>
+            <Text style={styles.problemText}>
+              Not recorded: {labelFor(p.action.kind)} at {formatClockTime(p.action.at, company.timezone)}. {friendlyError(p.error)} {p.reported === false ? "The office will be told when there's signal." : "The office has been told."}
+            </Text>
+            <Pressable accessibilityRole="button" hitSlop={10} onPress={async () => { await dismissSyncProblem(p.action.eventId); setProblems(await syncProblems()); }}>
+              <Text style={styles.link}>OK</Text>
+            </Pressable>
+          </View>
+        ))}
 
         <View style={styles.stopsHead}>
           <Text style={styles.h2}>Today's stops</Text>
-          {stops.length > 0 && <Text style={styles.count}>{remaining.length} left</Text>}
+          {shown.length > 0 && <Text style={styles.count}>{remaining.length} left</Text>}
         </View>
-        {stops.length === 0 ? (
-          <Text style={styles.lede}>No stops assigned to you today.</Text>
+        {shown.length === 0 ? (
+          <Text style={styles.lede}>
+            {noData ? "Couldn't load today's stops: no signal. Pull down to try again." : "No stops assigned to you today."}
+          </Text>
         ) : (
-          stops.map((s, i) => {
+          shown.map((s, i) => {
             const status = pendingVisitStatus(queued, s.visit_id) ?? s.status;
             return (
               <Link key={s.visit_id} href={{ pathname: "/visit/[id]", params: { id: s.visit_id } }} asChild>
@@ -223,6 +284,11 @@ export default function TodayScreen() {
   );
 }
 
+function labelFor(kind: string) {
+  return ({ in: "Clock in", out: "Clock out", break_start: "Break start", break_end: "Break end",
+    start_visit: "Start stop", complete_visit: "Finish stop", report_problem: "Couldn't do stop" } as Record<string, string>)[kind] ?? "Update";
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: color.daylight },
   body: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24, gap: 14 },
@@ -232,6 +298,8 @@ const styles = StyleSheet.create({
   title: { fontFamily: font.textBold, fontSize: 26, color: color.ink },
   lede: { fontFamily: font.text, fontSize: 17, color: color.inkSoft },
   link: { fontFamily: font.textMedium, fontSize: 16, color: color.turf },
+  problem: { flexDirection: "row", gap: 12, alignItems: "flex-start", padding: 12, borderRadius: 10, backgroundColor: color.surface, borderWidth: 1, borderColor: color.error },
+  problemText: { flex: 1, fontFamily: font.text, fontSize: 15, color: color.ink },
 
   clock: { borderRadius: 18, padding: 20, backgroundColor: color.surface, borderWidth: 1, borderColor: color.line },
   clockOn: { backgroundColor: color.ink, borderColor: color.ink },

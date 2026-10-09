@@ -3,9 +3,15 @@
  * used by the phone app with AsyncStorage.
  *
  * - Every action is saved first, then sent in order (oldest first).
- * - No signal: it stays, the attempt is counted, sending stops (order kept).
+ * - No signal, a server hiccup, or an expired sign-in: it stays, the attempt
+ *   is counted, sending stops (order kept) and it's retried later.
  * - The server refused it for good (a conflict, e.g. the office canceled the
- *   stop): it is removed and reported so the screen can explain.
+ *   stop, or a punch too old to accept): it's moved to a saved problem list
+ *   that stays on the phone until the person dismisses it, and reported so
+ *   the office can be told. Nothing disappears silently.
+ * - Each action belongs to the person who took it. On a shared phone, actions
+ *   are only sent while that same person is signed in; nobody else's sign-in
+ *   is ever used for them.
  * - Only one send loop runs at a time, so two triggers (app reopened + screen
  *   focused) never send the same action twice at once.
  * Duplicates across retries are prevented server-side by event ids and
@@ -17,14 +23,23 @@ export interface QueueStorage {
   remove(key: string): Promise<void>;
 }
 
-export type Queued<A> = A & { eventId: string; at: string; attempts: number };
+export type Queued<A> = A & { eventId: string; at: string; attempts: number; owner?: string | null };
+
+/** "retry" = keep and try later (no signal, server hiccup, signed out); "reject" = refused for good. */
+export type Outcome = "retry" | "reject";
 
 export interface QueueOptions<A> {
   storage: QueueStorage;
   key: string;
   legacyKeys?: string[];
   send: (action: Queued<A>) => Promise<void>;
-  isNetworkError: (err: unknown) => boolean;
+  /** Decide what a failure means. Defaults to isNetworkError → retry, else reject. */
+  classify?: (err: unknown) => Outcome;
+  isNetworkError?: (err: unknown) => boolean;
+  /** Who is signed in now (user id), or null. Actions are stamped with it and only sent for it. */
+  owner?: () => Promise<string | null>;
+  /** Told about each refusal once, e.g. to let the office know. Failures here are ignored. */
+  onReject?: (r: Rejection<A>) => Promise<void>;
   newId: () => string;
   now?: () => Date;
 }
@@ -34,9 +49,23 @@ export interface Rejection<A> {
   error: unknown;
 }
 
+export interface Problem<A> {
+  action: Queued<A>;
+  error: string;
+  at: string;
+  /** False until the office has been told; retried on every send run. */
+  reported?: boolean;
+}
+
+const errText = (e: unknown) =>
+  e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? e);
+
 export function createQueue<A extends object>(o: QueueOptions<A>) {
   let running: Promise<{ rejected: Rejection<A>[] }> | null = null;
   const now = o.now ?? (() => new Date());
+  const problemsKey = `${o.key}.problems`;
+  const classify = o.classify ?? ((e: unknown) => (o.isNetworkError?.(e) ? "retry" : "reject"));
+  const whoAmI = async () => (o.owner ? await o.owner() : null);
 
   async function load(): Promise<Queued<A>[]> {
     const raw = await o.storage.get(o.key);
@@ -52,22 +81,54 @@ export function createQueue<A extends object>(o: QueueOptions<A>) {
     return list;
   }
   const save = (list: Queued<A>[]) => o.storage.set(o.key, JSON.stringify(list));
+  async function loadProblems(): Promise<Problem<A>[]> {
+    const raw = await o.storage.get(problemsKey);
+    return raw ? (JSON.parse(raw) as Problem<A>[]) : [];
+  }
+
+  /** An action may be sent by this sign-in: same owner, or saved before owners were recorded. */
+  const mine = (q: Queued<A>, me: string | null) => !o.owner || q.owner === undefined || q.owner === me;
 
   async function drain(): Promise<{ rejected: Rejection<A>[] }> {
     const rejected: Rejection<A>[] = [];
+    const me = await whoAmI();
+    if (o.owner && !me) return { rejected };   // signed out: hold everything
+    // Tell the office about earlier refusals whose report didn't get through.
+    if (o.onReject) {
+      const list = await loadProblems();
+      let changed = false;
+      for (const p of list) {
+        if (p.reported !== false || !mine(p.action, me)) continue;
+        if (await o.onReject({ action: p.action, error: new Error(p.error) }).then(() => true, () => false)) {
+          p.reported = true;
+          changed = true;
+        }
+      }
+      if (changed) {
+        // Merge onto a fresh read so nothing added meanwhile is lost.
+        const done = new Set(list.filter((p) => p.reported).map((p) => p.action.eventId));
+        await o.storage.set(problemsKey, JSON.stringify((await loadProblems()).map((p) => (done.has(p.action.eventId) ? { ...p, reported: true } : p))));
+      }
+    }
     for (;;) {
       const list = await load();
-      const next = list[0];
+      const next = list.find((q) => mine(q, me));
       if (!next) break;
       try {
         await o.send(next);
       } catch (err) {
-        if (o.isNetworkError(err)) {
+        if (classify(err) === "retry") {
           next.attempts += 1;
           await save(list);
           break;
         }
-        rejected.push({ action: next, error: err });
+        const r = { action: next, error: err };
+        rejected.push(r);
+        let reported = !o.onReject;
+        if (o.onReject) reported = await o.onReject(r).then(() => true, () => false);
+        await o.storage.set(problemsKey, JSON.stringify([
+          ...(await loadProblems()), { action: next, error: errText(err), at: now().toISOString(), reported },
+        ]));
       }
       // Re-read before removing: actions added while sending must survive.
       const fresh = await load();
@@ -84,14 +145,41 @@ export function createQueue<A extends object>(o: QueueOptions<A>) {
 
   /** Record an action; "sent" when the server confirmed it, "queued" when offline. Throws if refused. */
   async function perform(action: A): Promise<"sent" | "queued"> {
-    const q = { ...action, eventId: o.newId(), at: now().toISOString(), attempts: 0 } as Queued<A>;
+    const q = { ...action, eventId: o.newId(), at: now().toISOString(), attempts: 0, ...(o.owner ? { owner: await whoAmI() } : {}) } as Queued<A>;
     await save([...(await load()), q]);
     if (running) await running;           // let an in-flight run finish first
     const { rejected } = await flush();
-    const mine = rejected.find((r) => r.action.eventId === q.eventId);
-    if (mine) throw mine.error;
+    const hit = rejected.find((r) => r.action.eventId === q.eventId);
+    if (hit) {
+      // The person sees this refusal right now; it doesn't need to stay on the problem list.
+      await o.storage.set(problemsKey, JSON.stringify((await loadProblems()).filter((p) => p.action.eventId !== q.eventId)));
+      throw hit.error;
+    }
     return (await load()).some((x) => x.eventId === q.eventId) ? "queued" : "sent";
   }
 
-  return { perform, flush, pending: load };
+  /** Actions waiting for the person signed in now. */
+  async function pending(): Promise<Queued<A>[]> {
+    const me = await whoAmI();
+    return (await load()).filter((q) => mine(q, me));
+  }
+
+  /** Actions saved by someone else who used this phone and hasn't signed back in. */
+  async function heldForOthers(): Promise<number> {
+    if (!o.owner) return 0;
+    const me = await whoAmI();
+    return (await load()).filter((q) => !mine(q, me)).length;
+  }
+
+  /** Refusals the person hasn't dismissed yet (only their own). */
+  async function problems(): Promise<Problem<A>[]> {
+    const me = await whoAmI();
+    return (await loadProblems()).filter((p) => mine(p.action, me));
+  }
+
+  async function dismissProblem(eventId: string): Promise<void> {
+    await o.storage.set(problemsKey, JSON.stringify((await loadProblems()).filter((p) => p.action.eventId !== eventId)));
+  }
+
+  return { perform, flush, pending, heldForOthers, problems, dismissProblem };
 }

@@ -11,8 +11,18 @@ import { dailyFromPeriods, fetchPeriods, resolvePoint, type Fetcher } from "./nw
 import { runWeather } from "./runner.ts";
 import { pgWeatherDb } from "./db-pg.ts";
 
-const fetcher: Fetcher = (url, init) => fetch(url, init);
+// Every outside request gives up after 15 seconds so a stalled service can't hold the job for hours.
+const fetcher: Fetcher = (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
 const log = (m: string) => console.log(`[weather] ${m}`);
+
+// Production projects (keep in step with platform/production-projects.txt), plus any given at run time.
+const PRODUCTION_REFS = ["iwowjrnrbjiydckhjsfi", "kymnehbnmqvpzwtxtizm", ...(process.env.PRODUCTION_PROJECT_REFS ?? "").split(",").map((r) => r.trim()).filter(Boolean)];
+
+/** Test runs also refuse any database that marks itself as production. */
+async function refuseProductionDatabase(c: { query(sql: string): Promise<{ rows: Record<string, unknown>[] }> }) {
+  const { rows } = await c.query("select enabled from private.platform_flags where key = 'production'");
+  if (rows[0]?.enabled === true) fail("This database is marked as production. Refusing.");
+}
 
 function fail(msg: string): never {
   console.log(`::error title=weather::${msg}`);
@@ -22,7 +32,7 @@ function fail(msg: string): never {
 function guardDbUrl(url: string | undefined): string {
   if (!url) fail("DB_URL is not set");
   // Never run worker tests against production from this tool.
-  if (url.includes("iwowjrnrbjiydckhjsfi") && process.argv[2] === "e2e") fail("Refusing to run e2e against production");
+  if (process.argv[2] === "e2e") for (const ref of PRODUCTION_REFS) if (url.includes(ref)) fail("Refusing to run e2e against production");
   return url;
 }
 
@@ -61,6 +71,7 @@ async function e2e() {
   const c = await connect();
   try {
     await c.query("begin");
+    await refuseProductionDatabase(c);
     const t = (await c.query(`insert into public.tenants (name, timezone) values ('Weather E2E (rolled back)', 'America/New_York') returning id`)).rows[0]!.id;
     const cl = (await c.query(`insert into public.clients (tenant_id, name) values ($1, 'E2E Customer') returning id`, [t])).rows[0]!.id;
     const p = (await c.query(

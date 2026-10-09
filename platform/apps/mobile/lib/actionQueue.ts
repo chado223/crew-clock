@@ -9,7 +9,8 @@ import { supabase } from "./supabase";
  * Every action is saved on the phone first, then sent in order. If there's no
  * signal it stays queued and is retried. The server treats repeats as the same
  * action (punch event ids; start/complete are idempotent), so retries never
- * double-count. A real rejection is removed from the queue and reported.
+ * double-count. A real rejection moves to a problem list on the phone and is
+ * reported to the office. Actions only ever send under the sign-in that took them.
  */
 export type FieldAction =
   | { kind: "in"; tenantId: string }
@@ -52,6 +53,17 @@ async function send(a: QueuedAction) {
   if (result.error) throw result.error;
 }
 
+/** No signal, a server hiccup or an expired sign-in: keep it and try again later. */
+export function classifyError(err: unknown): "retry" | "reject" {
+  const e = err as { message?: unknown; status?: number; code?: string };
+  const msg = err instanceof Error ? err.message : String(e?.message ?? err);
+  if (/network|fetch|timeout|offline|Failed to fetch|aborted/i.test(msg)) return "retry";
+  if (/JWT|expired|not_authenticated|invalid claim|refresh token/i.test(msg) || e?.code === "PGRST301") return "retry";
+  if (typeof e?.status === "number" && (e.status >= 500 || e.status === 401 || e.status === 408 || e.status === 429)) return "retry";
+  if (/^5\d\d\b|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout/i.test(msg)) return "retry";
+  return "reject";
+}
+
 const queue = createQueue<FieldAction>({
   storage: {
     get: (k) => AsyncStorage.getItem(k),
@@ -62,9 +74,16 @@ const queue = createQueue<FieldAction>({
   legacyKeys: ["crew.punchQueue.v1"],
   send,
   newId: () => Crypto.randomUUID(),
-  isNetworkError: (err) => {
-    const msg = err instanceof Error ? err.message : String((err as { message?: unknown })?.message ?? err);
-    return /network|fetch|timeout|offline|Failed to fetch/i.test(msg);
+  classify: classifyError,
+  // Read from the phone, so it works with no signal. Each action is sent only under the sign-in that took it.
+  owner: async () => (await supabase.auth.getSession()).data.session?.user.id ?? null,
+  // Let the office know, so hours can be fixed; the phone keeps it on its problem list too.
+  onReject: async ({ action, error }) => {
+    const message = error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error);
+    const { error: reportError } = await supabase.rpc("report_sync_problem", {
+      p_tenant_id: action.tenantId, p_kind: action.kind, p_at: action.at, p_error: message, p_client_event_id: action.eventId,
+    });
+    if (reportError) throw reportError; // kept as "not yet reported" and retried on the next send
   },
 });
 
@@ -73,6 +92,11 @@ export const perform = queue.perform;
 /** Send waiting actions oldest first; stops at the first connectivity failure. */
 export const flush = queue.flush;
 export const pendingActions = queue.pending;
+/** Refused actions the person hasn't dismissed yet. */
+export const syncProblems = queue.problems;
+export const dismissSyncProblem = queue.dismissProblem;
+/** Actions saved by someone else on this phone, waiting for them to sign back in. */
+export const heldForOthers = queue.heldForOthers;
 export type { Rejection } from "@crew/shared";
 
 /** What the person should see while actions are still waiting to send. */

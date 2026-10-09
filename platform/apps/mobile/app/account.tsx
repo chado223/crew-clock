@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { friendlyError } from "@crew/shared";
@@ -7,6 +7,8 @@ import { supabase } from "../lib/supabase";
 import { pendingActions } from "../lib/actionQueue";
 import { pendingPhotos } from "../lib/photos";
 import { color, font } from "../lib/theme";
+
+const SITE = process.env.EXPO_PUBLIC_SITE_URL?.replace(/\/$/, "");
 
 /** Sign out, or delete this sign-in. Work history stays with the company. */
 export default function Account() {
@@ -21,7 +23,7 @@ export default function Account() {
     if (waiting > 0) {
       return setMessage("This phone still has work that hasn't been sent. Get signal and open Today so it sends, then try again.");
     }
-    Alert.alert("Delete your account?", "You won't be able to sign in with this email again unless you're invited back.", [
+    Alert.alert("Delete your account?", "Your access to every company ends now. Signing in again later starts a brand-new, empty account.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -33,17 +35,29 @@ export default function Account() {
             setBusy(false);
             return setMessage(friendlyError(error));
           }
-          await AsyncStorage.clear();
+          // Only this person's saved copies; anyone else's waiting work on a shared phone stays.
+          const uid = (await supabase.auth.getSession()).data.session?.user.id;
+          if (uid) await AsyncStorage.removeItem(`crew.companies.${uid}`).catch(() => {});
           await supabase.auth.signOut({ scope: "local" });
         },
       },
     ]);
   }
 
+  async function signOut() {
+    const waiting = (await pendingActions()).length + (await pendingPhotos()).length;
+    if (waiting === 0) return supabase.auth.signOut();
+    Alert.alert(
+      "Updates still waiting",
+      `${waiting} ${waiting === 1 ? "update hasn't" : "updates haven't"} sent yet. They stay on this phone and send the next time you sign in here.`,
+      [{ text: "Stay signed in", style: "cancel" }, { text: "Sign out", onPress: () => supabase.auth.signOut() }],
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.body}>
-        <Pressable onPress={() => supabase.auth.signOut()} accessibilityRole="button" style={styles.secondary}>
+        <Pressable onPress={signOut} accessibilityRole="button" style={styles.secondary}>
           <Text style={styles.secondaryText}>Sign out</Text>
         </Pressable>
 
@@ -67,6 +81,16 @@ export default function Account() {
             <Text style={styles.deleteText}>{busy ? "Deleting…" : "Delete my account"}</Text>
           </Pressable>
         </View>
+        {SITE && (
+          <View style={styles.legal}>
+            <Pressable accessibilityRole="link" onPress={() => Linking.openURL(`${SITE}/privacy`)} hitSlop={8}>
+              <Text style={styles.link}>Privacy policy</Text>
+            </Pressable>
+            <Pressable accessibilityRole="link" onPress={() => Linking.openURL(`${SITE}/terms`)} hitSlop={8}>
+              <Text style={styles.link}>Terms</Text>
+            </Pressable>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -85,4 +109,6 @@ const styles = StyleSheet.create({
   deleteButton: { minHeight: 52, borderRadius: 10, backgroundColor: color.error, alignItems: "center", justifyContent: "center" },
   deleteText: { fontFamily: font.textBold, fontSize: 17, color: "#fff" },
   dim: { opacity: 0.6 },
+  legal: { flexDirection: "row", gap: 24, justifyContent: "center", paddingTop: 8 },
+  link: { fontFamily: font.textMedium, fontSize: 16, color: color.turf },
 });

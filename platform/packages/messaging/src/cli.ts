@@ -5,6 +5,15 @@ import { dispatch, pgMessagesDb } from "./dispatcher.ts";
 import { emailProviderFromEnv } from "./resend.ts";
 
 const log = (m: string) => console.log(`[messages] ${m}`);
+// Production projects (keep in step with platform/production-projects.txt), plus any given at run time.
+const PRODUCTION_REFS = ["iwowjrnrbjiydckhjsfi", "kymnehbnmqvpzwtxtizm", ...(process.env.PRODUCTION_PROJECT_REFS ?? "").split(",").map((r) => r.trim()).filter(Boolean)];
+
+/** Test runs also refuse any database that marks itself as production. */
+async function refuseProductionDatabase(c: { query(sql: string): Promise<{ rows: Record<string, unknown>[] }> }) {
+  const { rows } = await c.query("select enabled from private.platform_flags where key = 'production'");
+  if (rows[0]?.enabled === true) fail("This database is marked as production. Refusing.");
+}
+
 function fail(msg: string): never {
   console.log(`::error title=messages::${msg}`);
   throw new Error(msg);
@@ -13,7 +22,7 @@ function fail(msg: string): never {
 async function connect() {
   const url = process.env.DB_URL;
   if (!url) fail("DB_URL is not set");
-  if (url.includes("iwowjrnrbjiydckhjsfi")) fail("Refusing to run against production from this tool");
+  for (const ref of PRODUCTION_REFS) if (url.includes(ref)) fail("Refusing to run against production from this tool");
   const { default: pg } = await import("pg");
   const c = new pg.Client({ connectionString: url, ssl: process.env.DB_SSL === "off" ? false : { rejectUnauthorized: false } });
   await c.connect();
@@ -36,6 +45,7 @@ async function e2e() {
   const c = await connect();
   try {
     await c.query("begin");
+    await refuseProductionDatabase(c);
     // Only this test company may be touched: hide everything else already queued.
     await c.query("update public.messages set send_after = send_after + interval '100 years' where status = 'queued'");
     const t = (await c.query(`insert into public.tenants (name, timezone) values ('Messages E2E (rolled back)', 'America/New_York') returning id`)).rows[0]!.id;

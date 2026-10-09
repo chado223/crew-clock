@@ -22,6 +22,31 @@ applied="$("${PSQL[@]}" -At -c "select version from supabase_migrations.schema_m
 hashes="$("${PSQL[@]}" -At -F' ' -c "select version, substring(statements[1] from 5) from supabase_migrations.schema_migrations where statements[1] like 'md5:%'")"
 drift=0
 
+# Pass 1, before applying anything: every applied migration must still exist
+# unchanged, and nothing new may sort before the newest applied version.
+# (Only versions that match a file count; a dashboard-tool record carries its own timestamp.)
+newest_applied="$(for v in $applied; do ls "$MIG/${v}_"*.sql >/dev/null 2>&1 && echo "$v"; done | sort | tail -1)"
+names="$("${PSQL[@]}" -At -F' ' -c "select version, coalesce(name, '') from supabase_migrations.schema_migrations")"
+for v in $applied; do
+  # A record made by the Supabase dashboard tool names the file it came from instead of using its version.
+  n="$(awk -v v="$v" '$1==v {print $2}' <<<"$names")"
+  if ! ls "$MIG/${v}_"*.sql >/dev/null 2>&1 && [[ ! -f "$MIG/$n.sql" ]]; then
+    echo "::error title=migration-drift::applied migration $v ($n) has no file any more (deleted or renamed)."; drift=1
+  fi
+done
+for f in $(ls "$MIG"/*.sql | sort); do
+  base="$(basename "$f" .sql)"; version="${base%%_*}"; sum="$(md5sum "$f" | cut -d' ' -f1)"
+  if grep -qx "$version" <<<"$applied"; then
+    was="$(awk -v v="$version" '$1==v {print $2}' <<<"$hashes")"
+    if [[ -n "$was" && "$was" != "$sum" ]]; then
+      echo "::error title=migration-drift::$base was changed after it was applied. Put the change in a new migration."; drift=1
+    fi
+  elif [[ -n "$newest_applied" && "$version" < "$newest_applied" ]]; then
+    echo "::error title=migration-order::$base is older than already-applied $newest_applied. Give it a newer version."; drift=1
+  fi
+done
+[[ $drift == 0 ]] || { echo "Nothing applied."; exit 1; }
+
 for f in $(ls "$MIG"/*.sql | sort); do
   base="$(basename "$f" .sql)"; version="${base%%_*}"; name="${base#*_}"
   sum="$(md5sum "$f" | cut -d' ' -f1)"

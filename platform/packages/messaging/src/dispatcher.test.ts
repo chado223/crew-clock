@@ -48,3 +48,11 @@ test("provider errors are retried, provider rejections are recorded", async () =
   assert.equal(s.failed, 2);
   assert.deepEqual(results.map((r) => [r.id, r.retry, r.error]), [["boom", true, "network down"], ["bad", false, "invalid address"]]);
 });
+
+test("live message with no real provider for its channel is held, not logged as sent", async () => {
+  const { db, results } = fakeDb([{ id: "sms1", tenant_id: "t", channel: "sms", mode: "live", delivered_to: "+15550100", subject: null, body: "hi" }]);
+  const s = await dispatch(db, { allowLive: true, providers: {} });
+  assert.equal(s.heldLive, 1);
+  assert.equal(results[0]!.ok, false);
+  assert.equal(results[0]!.retry, true);
+});

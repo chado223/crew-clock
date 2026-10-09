@@ -67,7 +67,8 @@ export default async function InvoicesPage({
   else if (show !== "all") q = q.eq("status", show);
   const [{ data: invoices, error }, { data: clients }] = await Promise.all([
     q,
-    supabase.from("clients").select("id, name").eq("tenant_id", company.tenant_id).eq("status", "active").order("name"),
+    // Anyone can have finished work to bill, including leads and customers who just left.
+    supabase.from("clients").select("id, name, status").eq("tenant_id", company.tenant_id).order("name").limit(2000),
   ]);
 
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: company.timezone }).format(new Date());
@@ -121,7 +122,7 @@ export default async function InvoicesPage({
             <label htmlFor="client_id">Customer</label>
             <select id="client_id" name="client_id" required className="select" defaultValue={sp.client ?? ""}>
               <option value="" disabled>Choose a customer</option>
-              {(clients ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {(clients ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}{c.status === "active" ? "" : ` (${c.status})`}</option>)}
             </select>
           </div>
           <div className="field"><label htmlFor="from">Visits from</label><input id="from" name="from" type="date" required defaultValue={monthStart} className="input" /></div>

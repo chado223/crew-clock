@@ -82,6 +82,38 @@ async function addShift(formData: FormData) {
   back(week, error ? { error: friendlyError(error) } : { saved: "Shift added." });
 }
 
+async function fixBreak(formData: FormData) {
+  "use server";
+  const { company } = await currentCompany();
+  const week = String(formData.get("week"));
+  const endLocal = String(formData.get("ended_at") ?? "");
+  let error;
+  try {
+    ({ error } = await (await supabaseServer()).rpc("correct_break", {
+      p_break_id: String(formData.get("break_id")),
+      p_started_at: zonedLocalToIso(String(formData.get("started_at")), company.timezone),
+      p_ended_at: endLocal ? zonedLocalToIso(endLocal, company.timezone) : (null as unknown as string),
+      p_paid: formData.get("paid") === "on",
+      p_reason: String(formData.get("reason") ?? ""),
+    }));
+  } catch (e) {
+    error = e;
+  }
+  revalidatePath("/time");
+  back(week, error ? { error: friendlyError(error) } : { saved: "Break updated." });
+}
+
+async function resolveProblem(formData: FormData) {
+  "use server";
+  const week = String(formData.get("week"));
+  const { error } = await (await supabaseServer()).rpc("resolve_sync_problem", {
+    p_id: String(formData.get("id")),
+    p_resolution: String(formData.get("resolution") ?? ""),
+  });
+  revalidatePath("/time");
+  back(week, error ? { error: friendlyError(error) } : { saved: "Marked as handled." });
+}
+
 const STATUS_LABEL: Record<string, string> = {
   open: "On the clock",
   closed: "",
@@ -103,11 +135,21 @@ export default async function TimePage({
   const weekEnd = addDays(week, 6);
 
   const supabase = await supabaseServer();
-  const [{ data: summary, error: sErr }, { data: shifts, error: tErr }, { data: employees }] = await Promise.all([
+  const [{ data: summary, error: sErr }, { data: shifts, error: tErr }, { data: employees }, { data: breakRows }, { data: problemRows }] = await Promise.all([
     supabase.rpc("weekly_hours", { p_tenant_id: company.tenant_id, p_week_start: week }),
     supabase.rpc("timesheet", { p_tenant_id: company.tenant_id, p_from: week, p_to: weekEnd, p_include_voided: true }),
     supabase.from("employees").select("id, display_name").eq("tenant_id", company.tenant_id).eq("status", "active").order("display_name"),
+    supabase.from("time_entry_breaks").select("id, time_entry_id, started_at, ended_at, paid").eq("tenant_id", company.tenant_id)
+      .gte("started_at", zonedLocalToIso(`${addDays(week, -1)}T00:00`, tz)).lte("started_at", zonedLocalToIso(`${addDays(week, 8)}T00:00`, tz))
+      .order("started_at"),
+    supabase.from("sync_problems").select("id, action_label, happened_at, error, employees(display_name)").eq("tenant_id", company.tenant_id)
+      .is("resolved_at", null).order("happened_at"),
   ]);
+  const breaksByShift = new Map<string, { id: string; started_at: string; ended_at: string | null; paid: boolean }[]>();
+  for (const b of (breakRows ?? []) as { id: string; time_entry_id: string; started_at: string; ended_at: string | null; paid: boolean }[]) {
+    breaksByShift.set(b.time_entry_id, [...(breaksByShift.get(b.time_entry_id) ?? []), b]);
+  }
+  const problems = (problemRows ?? []) as unknown as { id: string; action_label: string; happened_at: string; error: string; employees: { display_name: string } | null }[];
   const loadError = sErr ?? tErr;
   const rows = (shifts ?? []) as TimesheetRow[];
   const totals = (summary ?? []) as WeeklyHoursRow[];
@@ -136,6 +178,27 @@ export default async function TimePage({
       {sp.saved && <p className="notice" role="status">{sp.saved}</p>}
       {sp.error && <p className="error-text" role="alert">{sp.error}</p>}
       {loadError && <p className="error-text">{friendlyError(loadError)}</p>}
+
+      {problems.length > 0 && (
+        <section aria-labelledby="phone-problems" id="phone-problems">
+          <h2 id="phone-problems-h" className={styles.h2}>Phone problems to fix</h2>
+          <p className={styles.empty}>A crew phone saved these with no signal, and the server couldn&apos;t accept them. Fix the shift below or add it, then mark handled.</p>
+          <ul className={styles.shifts}>
+            {problems.map((p) => (
+              <li key={p.id} className={styles.shift}>
+                <p><strong>{p.employees?.display_name ?? "Someone"}</strong>: {p.action_label} at {fmtDay(new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(p.happened_at)))}, {formatClockTime(p.happened_at, tz)}. {friendlyError(p.error)}</p>
+                <form action={resolveProblem} className={styles.voidForm}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <input type="hidden" name="week" value={week} />
+                  <label htmlFor={`res-${p.id}`} className={styles.voidLabel}>What you did</label>
+                  <input id={`res-${p.id}`} name="resolution" required minLength={3} className="input" placeholder="e.g. Added the clock-out by hand" />
+                  <button className="button quiet" type="submit">Mark handled</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section aria-labelledby="totals">
         <h2 id="totals" className={styles.h2}>Weekly totals</h2>
@@ -208,6 +271,26 @@ export default async function TimePage({
                         </div>
                         <button className="button" type="submit">Save change</button>
                       </form>
+                      {(breaksByShift.get(r.entry_id) ?? []).map((b) => (
+                        <form key={b.id} action={fixBreak} className={styles.form}>
+                          <input type="hidden" name="break_id" value={b.id} />
+                          <input type="hidden" name="week" value={week} />
+                          <div className="field">
+                            <label htmlFor={`bs-${b.id}`}>Break start</label>
+                            <input id={`bs-${b.id}`} name="started_at" type="datetime-local" required className="input" defaultValue={isoToZonedLocal(b.started_at, tz)} />
+                          </div>
+                          <div className="field">
+                            <label htmlFor={`be-${b.id}`}>Break end</label>
+                            <input id={`be-${b.id}`} name="ended_at" type="datetime-local" className="input" defaultValue={b.ended_at ? isoToZonedLocal(b.ended_at, tz) : ""} />
+                          </div>
+                          <label className="field"><span><input type="checkbox" name="paid" defaultChecked={b.paid} /> Paid break</span></label>
+                          <div className={`field ${styles.wide}`}>
+                            <label htmlFor={`br-${b.id}`}>Reason</label>
+                            <input id={`br-${b.id}`} name="reason" required minLength={3} className="input" placeholder="e.g. Forgot to end lunch, took 30 min" />
+                          </div>
+                          <button className="button quiet" type="submit">Save break</button>
+                        </form>
+                      ))}
                       <form action={voidShift} className={styles.voidForm}>
                         <input type="hidden" name="entry_id" value={r.entry_id} />
                         <input type="hidden" name="week" value={week} />

@@ -1,7 +1,8 @@
 /** Where an owner_attention item (or any record reference) opens in the app. */
 export function recordHref(refType: string, refId: string | null, refDate?: string | null, kind?: string): string {
   if (kind === "weather") return "/weather";
-  if ((kind === "unassigned" || kind === "missed_visit") && refDate) return `/schedule?week=${refDate}`;
+  if ((kind === "unassigned" || kind === "missed_visit" || kind === "crew_skipped") && refDate) return `/schedule?week=${refDate}`;
+  if (kind === "sync_problem") return "/time#phone-problems";
   switch (refType) {
     case "invoice": return `/invoices/${refId}`;
     case "estimate": return `/estimates/${refId}`;

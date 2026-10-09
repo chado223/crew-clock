@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # to re-run the app checks on the new lockfile
 
 concurrency:
   group: lockfile-${{ github.ref }}
@@ -41,3 +42,7 @@ jobs:
           git commit -m "Update platform/package-lock.json (generated in CI)"
           git push
           echo "::notice title=lockfile::committed"
+          # Pushes made with the built-in token don't start workflows; start the app checks on the new lockfile explicitly.
+          gh workflow run apps.yml --ref "${GITHUB_REF_NAME}"
+        env:
+          GH_TOKEN: ${{ github.token }}
