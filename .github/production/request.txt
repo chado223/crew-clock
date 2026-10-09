@@ -9,3 +9,4 @@ action=auth-send
 # run 2: 2026-10-07T16:45:09Z apply migrations (schema only, no data), mark production, preflight
 # run 3: 2026-10-07T16:56:52Z apply 20261007001600 (lock down unused scenarios table), preflight
 # run 4: 2026-10-09T21:38:10Z owner-only sign-in test, part 1: send one code to chadwasham64@gmail.com (approved by Chad 2026-10-09)
+# run 5: 2026-10-09T21:56:46Z owner-only sign-in test, replacement send (templates fixed; previous link invalidated)
