@@ -28,7 +28,7 @@ jobs:
         id: req
         run: |
           action="$(grep -E '^action=' .github/production/request.txt | tail -1 | cut -d= -f2 | tr -d '[:space:]')"
-          case "$action" in check|migrate|preflight|auth-settings|auth-send|auth-verify) ;; *) echo "::error::unknown action '$action'"; exit 1;; esac
+          case "$action" in check|migrate|preflight|auth-settings|auth-send|auth-verify|auth-config) ;; *) echo "::error::unknown action '$action'"; exit 1;; esac
           echo "action=$action" >> "$GITHUB_OUTPUT"
           echo "::notice title=production::requested action: $action"
       - name: Install psql 17
@@ -110,3 +110,28 @@ jobs:
           curl -fsS -o /dev/null -X POST "$URL/auth/v1/logout?scope=global" -H "apikey: $KEY" -H "Authorization: Bearer $token"
           echo "::notice title=session::test session signed out everywhere"
           rm -f session.json
+      - name: Read the live sign-in configuration (read-only Management API; prints no secrets)
+        if: steps.req.outputs.action == 'auth-config'
+        env:
+          REF: kymnehbnmqvpzwtxtizm
+          SBP: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          [ -n "$SBP" ] || { echo "::error::add the SUPABASE_ACCESS_TOKEN secret to the production environment first"; exit 1; }
+          code=$(curl -sS -o cfg.json -w '%{http_code}' "https://api.supabase.com/v1/projects/$REF/config/auth" -H "Authorization: Bearer $SBP")
+          [ "$code" = "200" ] || { echo "::error title=auth-config::Management API returned $code"; rm -f cfg.json; exit 1; }
+          jq -r '
+            "site URL: \(.site_url)",
+            "allowed redirect URLs: \((.uri_allow_list // "") | if . == "" then "none" else . end)",
+            "email sign-in enabled: \(.external_email_enabled)",
+            "auto-confirm new emails: \(.mailer_autoconfirm)",
+            "code length: \(.mailer_otp_length), code lifetime: \(.mailer_otp_exp)s",
+            "custom SMTP host: \(.smtp_host // "none (Supabase built-in)")",
+            "sender: \(.smtp_sender_name // "?") <\(.smtp_admin_email // "?")>",
+            "sign-in emails per hour: \(.rate_limit_email_sent)"' cfg.json | sed 's/^/::notice title=auth-config::/'
+          for t in confirmation magic_link email_change reauthentication recovery invite; do
+            jq -r --arg t "$t" '
+              (.["mailer_subjects_" + $t] // "") as $s | (.["mailer_templates_" + $t + "_content"] // "") as $b |
+              "\($t): subject=\(if $s == "" then "(Supabase default)" else $s end) | body=\(if $b == "" then "(Supabase default)" else "\($b | length) chars" end) | has code {{ .Token }}: \($b | test("\\.Token\\b")) | has link {{ .ConfirmationURL }}: \($b | test("ConfirmationURL"))"' cfg.json \
+              | sed 's/^/::notice title=template::/'
+          done
+          rm -f cfg.json
