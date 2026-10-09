@@ -2,6 +2,10 @@ import "react-native-url-polyfill/auto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
 import { AppState } from "react-native";
+import { assertProjectForEnv } from "@crew/shared";
+
+// A production build must use crew-clock-prod, a staging build staging; a mismatch stops the app at launch.
+assertProjectForEnv(process.env.EXPO_PUBLIC_SUPABASE_URL, process.env.EXPO_PUBLIC_APP_ENV);
 
 export const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL!,

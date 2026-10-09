@@ -28,7 +28,7 @@ jobs:
         id: req
         run: |
           action="$(grep -E '^action=' .github/production/request.txt | tail -1 | cut -d= -f2 | tr -d '[:space:]')"
-          case "$action" in check|migrate|preflight) ;; *) echo "::error::unknown action '$action'"; exit 1;; esac
+          case "$action" in check|migrate|preflight|auth-settings|auth-send|auth-verify) ;; *) echo "::error::unknown action '$action'"; exit 1;; esac
           echo "action=$action" >> "$GITHUB_OUTPUT"
           echo "::notice title=production::requested action: $action"
       - name: Install psql 17
@@ -66,3 +66,47 @@ jobs:
           latest="$(ls platform/supabase/migrations/*.sql | sort | tail -1 | xargs basename | cut -d_ -f1)"
           psql "$DB_URL" -X -At -F ' | ' -v expected_latest="$latest" -f platform/supabase/ops/preflight.sql > preflight.txt
           sed 's/^t | /::notice title=pass::/; s/^f | /::warning title=not yet::/' preflight.txt
+
+      # ---- Sign-in (auth) checks. Only ever the owner's own address; never anyone else.
+      - name: Sign-in settings (read-only, public endpoint)
+        if: startsWith(steps.req.outputs.action, 'auth-')
+        env:
+          URL: https://kymnehbnmqvpzwtxtizm.supabase.co
+          KEY: sb_publishable_dPalDCiHQ0C1TaUbmxeFEw_3yq5K7St
+        run: |
+          curl -fsS "$URL/auth/v1/settings" -H "apikey: $KEY" > settings.json
+          jq -r '"email sign-in enabled: \(.external.email)", "sign-ups open: \(.disable_signup|not)", "email auto-confirm (should be false): \(.mailer_autoconfirm)", "phone sign-in: \(.external.phone)", "anonymous sign-in: \(.external.anonymous_users // false)"' settings.json | sed 's/^/::notice title=auth::/'
+      - name: Send one sign-in code to the owner only
+        if: steps.req.outputs.action == 'auth-send'
+        env:
+          URL: https://kymnehbnmqvpzwtxtizm.supabase.co
+          KEY: sb_publishable_dPalDCiHQ0C1TaUbmxeFEw_3yq5K7St
+          TO: chadwasham64@gmail.com
+        run: |
+          [ "$TO" = "chadwasham64@gmail.com" ] || { echo "::error::only the owner's address is allowed"; exit 1; }
+          code=$(curl -sS -o resp.json -w '%{http_code}' -X POST "$URL/auth/v1/otp" -H "apikey: $KEY" -H "Content-Type: application/json" \
+            -d "{\"email\":\"$TO\",\"create_user\":true}")
+          [ "$code" = "200" ] || { echo "::error title=auth::code request failed ($code): $(head -c 300 resp.json)"; exit 1; }
+          echo "::notice title=auth::one sign-in code requested for $TO (expires in 1 hour)"
+      - name: Verify the code, check the session, then sign the test session out
+        if: steps.req.outputs.action == 'auth-verify'
+        env:
+          URL: https://kymnehbnmqvpzwtxtizm.supabase.co
+          KEY: sb_publishable_dPalDCiHQ0C1TaUbmxeFEw_3yq5K7St
+          TO: chadwasham64@gmail.com
+          OTP: ${{ secrets.OTP_CODE }}
+        run: |
+          [ -n "$OTP" ] || { echo "::error::add the OTP_CODE secret to the production environment first"; exit 1; }
+          code=$(curl -sS -o session.json -w '%{http_code}' -X POST "$URL/auth/v1/verify" -H "apikey: $KEY" -H "Content-Type: application/json" \
+            -d "{\"type\":\"email\",\"email\":\"$TO\",\"token\":\"$OTP\"}")
+          [ "$code" = "200" ] || { echo "::error title=auth::code was not accepted ($code): $(jq -r '.msg // .error_description // .error // empty' session.json | head -c 200)"; exit 1; }
+          # Never print tokens; only facts about the session.
+          jq -r '"signed in as: \(.user.email)", "user id: \(.user.id)", "email confirmed: \(.user.email_confirmed_at != null)", "role: \(.user.role)", "session lasts: \(.expires_in) seconds", "has refresh token: \(.refresh_token != null)"' session.json | sed 's/^/::notice title=session::/'
+          [ "$(jq -r .user.email session.json)" = "$TO" ] || { echo "::error::session is for the wrong address"; exit 1; }
+          # Prove the session works against the database as this user, then end it.
+          token=$(jq -r .access_token session.json)
+          curl -fsS "$URL/rest/v1/rpc/my_companies" -X POST -H "apikey: $KEY" -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d '{}' \
+            | jq -r '"companies visible to this sign-in: \(length)"' | sed 's/^/::notice title=session::/'
+          curl -fsS -o /dev/null -X POST "$URL/auth/v1/logout?scope=global" -H "apikey: $KEY" -H "Authorization: Bearer $token"
+          echo "::notice title=session::test session signed out everywhere"
+          rm -f session.json
