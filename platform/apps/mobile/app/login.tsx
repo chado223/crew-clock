@@ -54,11 +54,11 @@ export default function Login() {
           />
         ) : (
           <TextInput
-            accessibilityLabel="6-digit code"
+            accessibilityLabel="Sign-in code from the email"
             keyboardType="number-pad"
             autoComplete="one-time-code"
             textContentType="oneTimeCode"
-            maxLength={6}
+            maxLength={10} // the project sets 6; never cut off a longer code if that setting changes
             value={code}
             onChangeText={setCode}
             style={[styles.input, styles.codeInput]}
