@@ -196,3 +196,21 @@ Sign-in is by a 6-digit emailed code (web and mobile). Supabase's built-in maile
 - Supabase Auth → SMTP: host `smtp.resend.com`, port `465`, user `resend`, password = the Resend API key (pasted by Chad), sender name `Chad Washam Lawncare`, sender email `noreply@chadwashamlawns.com`.
 - Auth email rate limit raised from the default (about 30/hour) to 100/hour, which matches Resend's free daily allowance.
 - Customer/employee messages: still test mode, all three locks on.
+
+---
+
+## Standing rule: keep company email separate from SaaS login email (Chad, 2026-10-11)
+
+A company's customer-facing addresses must stay separate from the address its owner signs in with, and from the platform's system notifications.
+- **Customer-facing addresses:** what customers see as the company's email or reply-to.
+- **The owner's sign-in address:** for CWLC, `chadwasham64@gmail.com`.
+- **The platform's system notifications.**
+
+Today:
+- Customer messages use the company's own settings (`communication_settings.reply_to`, `from_name`, `test_email`). They never fall back to the owner's login email.
+- The company profile has its own `email` field.
+
+Keep it that way, and in future work:
+- Never fill a customer-facing field from `auth.users.email`.
+- Send system notices (sign-in codes, billing, security alerts) to the account's login address, under the SaaS brand, not the company's.
+- Ask for the company's contact and reply-to addresses separately during setup.
