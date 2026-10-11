@@ -60,7 +60,7 @@ jobs:
           fi
       - name: Build web
         env:
-          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_URL: https://aaaaaaaaaaaaaaaaaaaa.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
           NEXT_TELEMETRY_DISABLED: "1"
         run: |
