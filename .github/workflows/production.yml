@@ -69,7 +69,7 @@ jobs:
 
       # ---- Sign-in (auth) checks. Only ever the owner's own address; never anyone else.
       - name: Sign-in settings (read-only, public endpoint)
-        if: startsWith(steps.req.outputs.action, 'auth-')
+        if: startsWith(steps.req.outputs.action, 'auth-') || steps.req.outputs.action == 'preflight'
         env:
           URL: https://kymnehbnmqvpzwtxtizm.supabase.co
           KEY: sb_publishable_dPalDCiHQ0C1TaUbmxeFEw_3yq5K7St
