@@ -46,7 +46,7 @@ No database password, service key or email key goes on this service.
 
 **Differences from `render-web.yaml`:**
 - The Render tool can't set a root folder, so the build and start commands begin with `cd platform`. Same result.
-- The health check path is unset until Chad adds `/login` in the dashboard.
+- The health check path was set by Chad in the dashboard (`/login`) after creation.
 
 **Live check (`web-live-check.yml`, GitHub runner, GET requests only): passed.**
 - `/login`, `/privacy` and `/terms` load (200). A signed-out visit to `/clients` redirects to `/login` (307).
@@ -86,7 +86,9 @@ No database password, service key or email key goes on this service.
    - The database showed still 1 user (Chad), 0 sessions, 0 pending codes, 0 sign-in events, 0 companies, 0 messages. No emails were sent, nothing was written, and nothing was deployed (Render still shows only the Flask service).
 3. ✅ **Done 2026-10-11:** branch `web-release` created from `production-ops`. App code is identical to rehearsed commit `df435da`; only docs differ. No service watches it yet.
 4. ✅ **Done 2026-10-11:** Render service created. Chad added a card; the workspace stays on Hobby.
-5. ✅ **Done 2026-10-11:** first deploy is live and the read-only live check passed. Remaining: Chad sets Health Check Path = `/login` in Render.
+5. ✅ **Done 2026-10-11:** first deploy is live and the read-only live check passed. Health check: ✅ **done 2026-10-11 05:37 UTC.** Chad set Health Check Path = `/login`. Verified:
+   - Render shows the path set, the deploy live, and no failure events since.
+   - The read-only live check re-run passed; auto-deploy is still off.
 6. Continue the clean-start plan: Chad signs in and creates the company (`CUTOVER_CLEAN_START.md`, step 3).
 
 **Undo:** suspend or delete the Render service, which stops the $7 charge. The Flask app and the database are unaffected.

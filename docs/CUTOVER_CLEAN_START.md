@@ -48,9 +48,9 @@ Verified read-only on 2026-10-10:
 | # | Step | Who | Touches production? | Undo |
 |---|---|---|---|---|
 | A ✅ | **Done 2026-10-10, match.** Check the Flask app's Sheet: Render → crew-clock → Environment → `SHEET_ID`. It should match the ID in the original Sheet's web address. Read only. | Chad | No | n/a |
-| B | **Decide where the new web app runs** (it isn't hosted anywhere yet). Pending since the production plan. Options and prices come in a separate note before any choice. | Chad | No | n/a |
-| 1 | Preflight, read-only (`action=preflight`, clean mode): expect every safety check to pass. *one company* and *owner* show "not yet". | me + Chad's click | Read-only | n/a |
-| 2 | Put the web app on the chosen host with `NEXT_PUBLIC_APP_ENV=production` and the production URL and public key. The app refuses to start if those don't match. Not announced or linked anywhere. | me (+ Chad for any account) | No | Take it down |
+| B ✅ | **Done 2026-10-11:** Render $7 instance, live at https://crew-clock-web.onrender.com (see `WEB_HOSTING.md`). Decide where the new web app runs (it isn't hosted anywhere yet). Pending since the production plan. Options and prices come in a separate note before any choice. | Chad | No | n/a |
+| 1 ✅ | **Covered 2026-10-10/11** by the read-only preflight queries and run 11; nothing changed since except sign-up off. Preflight, read-only (`action=preflight`, clean mode): expect every safety check to pass. *one company* and *owner* show "not yet". | me + Chad's click | Read-only | n/a |
+| 2 ✅ | **Done 2026-10-11** (live check passed; sign-up off). Put the web app on the chosen host with `NEXT_PUBLIC_APP_ENV=production` and the production URL and public key. The app refuses to start if those don't match. Not announced or linked anywhere. | me (+ Chad for any account) | No | Take it down |
 | 3 | Chad signs in with an emailed code and creates **Chad Washam Lawncare** in the app. He becomes owner automatically. Messages default to test mode, and the platform switch blocks live sending. | Chad | Creates 1 company | Delete it (no other data) |
 | 4 | Preflight again, clean mode: expect **all** checks to pass. That means 1 company, owner `chadwasham64@gmail.com`, nothing carried over, messaging off. | me + Chad's click | Read-only | n/a |
 | 5 | Chad's own end-to-end check: add a test employee, clock in/out, void it, and make a test invoice. Confirm it shows **test mode** and nothing is emailed to anyone. | Chad + me | Test rows (voidable, audited) | Void |
