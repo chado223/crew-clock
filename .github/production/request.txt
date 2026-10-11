@@ -4,7 +4,7 @@
 #   check     - read-only: confirm the target is crew-clock-prod and print its state
 #   migrate   - apply every migration with the checked script, mark it production
 #   preflight - read-only: run platform/supabase/ops/preflight.sql
-action=auth-verify
+action=auth-settings
 # run 1: 2026-10-07T16:40:58Z read-only identity check
 # run 2: 2026-10-07T16:45:09Z apply migrations (schema only, no data), mark production, preflight
 # run 3: 2026-10-07T16:56:52Z apply 20261007001600 (lock down unused scenarios table), preflight
@@ -15,3 +15,4 @@ action=auth-verify
 # run 8: 2026-10-11T01:55:20Z read-only re-check of email code length (no emails, no changes)
 # run 9: 2026-10-11T01:58:59Z owner-only sign-in test: send one 6-digit code to chadwasham64@gmail.com (approved by Chad 2026-10-10)
 # run 10: 2026-10-11T02:02:01Z owner-only sign-in test: check the code from run 9, confirm the session, sign it out (code read from the OTP_CODE environment secret)
+# run 11: 2026-10-11 read-only check that public sign-up is off (Chad turned it off 2026-10-11 05:17Z); public settings endpoint only, no emails, no users, no database writes

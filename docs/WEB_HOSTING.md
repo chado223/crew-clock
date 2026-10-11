@@ -59,9 +59,9 @@ No database password, service key or email key goes on this service.
 ## Activation steps (each needs Chad's approval)
 
 1. ✅ **Done 2026-10-11:** Chad checked the Render workspace plan. It is **Hobby** ($0), so the $7 instance is the whole Render bill.
-2. **Close public sign-up first** (production setting: Supabase → Authentication → Sign In / Providers → turn off "Allow new users to sign up").
-   - Chad's account already exists, so he can still sign in. A stranger who finds the address cannot create an account or a company, and no sign-in emails go to strangers.
-   - It reopens when crews are invited (cutover step 7).
+2. ✅ **Done 2026-10-11 (approved by Chad):** public sign-up is closed. Chad turned off Supabase → crew-clock-prod → Authentication → Sign In / Providers → "Allow new users to sign up".
+   - His existing account can still sign in. Strangers can't create accounts or companies, or trigger sign-in emails.
+   - Reopen it at cutover step 7 (inviting crews). Verified read-only by production run 11.
 3. ✅ **Done 2026-10-11:** branch `web-release` created from `production-ops`. App code is identical to rehearsed commit `df435da`; only docs differ. No service watches it yet.
 4. Create the Render service from `render-web.yaml`. Chad confirms the $7 charge in Render.
 5. First deploy (manual). Check `/login` loads and that the app is pointed at `crew-clock-prod`.
