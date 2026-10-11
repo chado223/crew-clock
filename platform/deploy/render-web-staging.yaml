@@ -1,0 +1,33 @@
+# Render configuration for the STAGING (test) copy of the Crew Clock web app. NOT ACTIVE.
+# Prepared 2026-10-11 for Chad's review; nothing has been created on Render.
+#
+# Points only at crew-clock-staging (newivmnolbzhjypusmob, old free Supabase org).
+# NEXT_PUBLIC_APP_ENV=staging makes the app refuse to run against any other
+# database, production included. No production values, keys or secrets here.
+services:
+  - type: web
+    name: crew-clock-web-staging          # -> https://crew-clock-web-staging.onrender.com
+    runtime: node
+    region: ohio
+    plan: free                            # $0; sleeps after 15 min idle, ~1 min to wake
+    branch: web-staging                   # its own branch; never web-release or main
+    rootDir: platform                     # (created via API: commands start with `cd platform`)
+    autoDeployTrigger: off                # deploys only when someone presses Deploy
+    buildCommand: npm ci --no-audit --no-fund && npm run build -w @crew/web
+    startCommand: npm run start -w @crew/web
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: NEXT_PUBLIC_APP_ENV
+        value: staging
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        value: https://newivmnolbzhjypusmob.supabase.co
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY   # staging's public "publishable" key
+        value: sb_publishable_Gr28VIRX0h4K2JthjxqIoQ_YWXENlLd
+      - key: NEXT_PUBLIC_SITE_URL
+        value: https://crew-clock-web-staging.onrender.com
+      - key: NEXT_PUBLIC_SUPPORT_EMAIL
+        value: chadwashamlawncare@gmail.com
