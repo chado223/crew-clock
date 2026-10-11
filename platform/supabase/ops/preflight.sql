@@ -1,7 +1,13 @@
 -- READ-ONLY preflight for the dedicated production project, run right before
 -- cutover (and again after). Every row is one check: ok = true or the cutover stops.
---   psql "$NEW_DB_URL" -X -v expected_latest=<newest migration version> -f preflight.sql
+--   psql "$NEW_DB_URL" -X -v expected_latest=<newest migration version> -v start=clean|import -f preflight.sql
+--   start=clean  (default): fresh company made in the app; no money carried over.
+--   start=import: the old project's data was imported; money must match the backup.
 -- (or paste into the Supabase SQL runner with the version filled in).
+\if :{?start}
+\else
+\set start clean
+\endif
 begin transaction read only;
 
 with checks(check_name, ok, detail) as (
@@ -50,11 +56,17 @@ with checks(check_name, ok, detail) as (
   select 'owner is chadwasham64@gmail.com', exists (
            select 1 from public.memberships m join auth.users u on u.id = m.user_id
            where m.role = 'owner' and lower(u.email) = 'chadwasham64@gmail.com'),
-         'run ops/0001 after Chad''s first sign-in (pending before that)'
+         'clean start: Chad creates the company in the app (owner automatically); import: ops/0001 after first sign-in'
   union all
-  select 'money matches the backup', (select coalesce(sum(total), 0) from public.invoices) = 350.00
-           and (select coalesce(sum(amount), 0) from public.expenses where voided_at is null) = 258.50,
-         'invoices $350.00, expenses $258.50 as exported from the old project'
+  select case when :'start' = 'import' then 'money matches the backup' else 'clean start: nothing carried over' end,
+         case when :'start' = 'import'
+              then (select coalesce(sum(total), 0) from public.invoices) = 350.00
+                   and (select coalesce(sum(amount), 0) from public.expenses where voided_at is null) = 258.50
+              else not exists (select 1 from public.clients) and not exists (select 1 from public.invoices)
+                   and not exists (select 1 from public.expenses) and not exists (select 1 from public.time_entries)
+         end,
+         case when :'start' = 'import' then 'invoices $350.00, expenses $258.50 as exported from the old project'
+              else 'no customers, invoices, expenses or time from the old system (checked before any real use)' end
 )
 select ok, check_name, detail from checks order by ok, check_name;
 
