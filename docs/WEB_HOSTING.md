@@ -44,10 +44,10 @@ No database password, service key or email key goes on this service.
 | Item | Monthly |
 |---|---|
 | Starter instance | $7 |
-| Render account (workspace) plan | $0 on Hobby. **Chad checks his plan in step 1.** If it shows Pro ($25), we decide then. |
+| Render account (workspace) plan | **$0. Hobby, confirmed by Chad 2026-10-11** (Workspace Settings → Billing) |
 | Traffic | 5 GB included on Hobby, then $0.15/GB. Expected $0. |
 | Build minutes | 500 included; each deploy uses about 2–5. |
-| **Render total** | **$7** (with Supabase Pro $25: about **$32/month**) |
+| **Render total** | **$7/month** (with Supabase Pro $25: about **$32/month**) |
 
 ## Rehearsal (GitHub, 2026-10-11, `web-host-rehearsal.yml`)
 
@@ -58,11 +58,11 @@ No database password, service key or email key goes on this service.
 
 ## Activation steps (each needs Chad's approval)
 
-1. **Chad checks the Render workspace plan** (Workspace Settings → Billing). Read-only.
+1. ✅ **Done 2026-10-11:** Chad checked the Render workspace plan. It is **Hobby** ($0), so the $7 instance is the whole Render bill.
 2. **Close public sign-up first** (production setting: Supabase → Authentication → Sign In / Providers → turn off "Allow new users to sign up").
    - Chad's account already exists, so he can still sign in. A stranger who finds the address cannot create an account or a company, and no sign-in emails go to strangers.
    - It reopens when crews are invited (cutover step 7).
-3. Create branch `web-release` from the rehearsed commit.
+3. ✅ **Done 2026-10-11:** branch `web-release` created from `production-ops`. App code is identical to rehearsed commit `df435da`; only docs differ. No service watches it yet.
 4. Create the Render service from `render-web.yaml`. Chad confirms the $7 charge in Render.
 5. First deploy (manual). Check `/login` loads and that the app is pointed at `crew-clock-prod`.
 6. Continue the clean-start plan: Chad signs in and creates the company (`CUTOVER_CLEAN_START.md`, step 3).
