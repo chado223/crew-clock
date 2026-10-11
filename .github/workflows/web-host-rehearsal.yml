@@ -1,0 +1,63 @@
+name: Web host rehearsal (Render settings, no deploy)
+
+# Builds and runs the web app the way the Render service in
+# platform/deploy/render-web.yaml would, on GitHub's runner, and reports how much
+# memory it uses (the planned instance has 512 MB). Touches no database: the
+# production build is compiled but never started; the runtime test uses a
+# placeholder project and only pages that need no data.
+on:
+  workflow_dispatch:
+  push:
+    branches: [production-ops]
+    paths: [".github/workflows/web-host-rehearsal.yml", "platform/deploy/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install (Render build command, part 1)
+        run: |
+          start=$(date +%s); npm ci --no-audit --no-fund
+          echo "::notice title=install::$(( $(date +%s) - start ))s, node_modules $(du -sh node_modules | cut -f1)"
+      - name: Build with the exact production settings (compile only)
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_APP_ENV: production
+          NEXT_PUBLIC_SUPABASE_URL: https://kymnehbnmqvpzwtxtizm.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_dPalDCiHQ0C1TaUbmxeFEw_3yq5K7St
+          NEXT_PUBLIC_SITE_URL: https://crew-clock-web.onrender.com
+          NEXT_PUBLIC_SUPPORT_EMAIL: chadwashamlawncare@gmail.com
+        run: |
+          set -o pipefail; start=$(date +%s)
+          /usr/bin/time -v npm run build -w @crew/web 2> time.txt | tail -5
+          echo "::notice title=prod-build::ok in $(( $(date +%s) - start ))s, peak build memory $(( $(grep 'Maximum resident' time.txt | awk '{print $6}') / 1024 )) MB"
+      - name: Run it and measure memory (placeholder project, no data pages)
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
+          NEXT_PUBLIC_SITE_URL: http://localhost:10000
+          PORT: "10000"
+        run: |
+          rm -rf apps/web/.next
+          npm run build -w @crew/web > /dev/null
+          npm run start -w @crew/web > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs -o /dev/null localhost:10000/login && break; sleep 1; done
+          peak=0
+          for round in $(seq 1 20); do
+            for p in /login /privacy /terms / /clients; do curl -s -o /dev/null -w "%{http_code} " "localhost:10000$p" >> codes.txt; done
+            kb=$(ps -eo rss,args | grep -E "next-server|next start|node" | grep -v grep | awk '{s+=$1} END {print s}')
+            [ "$kb" -gt "$peak" ] && peak=$kb
+          done
+          echo "::notice title=runtime::peak memory $(( peak / 1024 )) MB of 512 MB after 100 requests; status codes: $(sort codes.txt | tr ' ' '\n' | sort | uniq -c | tr '\n' ' ')"
+          [ $(( peak / 1024 )) -lt 400 ] || echo "::warning title=runtime::above 400 MB - 512 MB instance would be tight"

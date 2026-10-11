@@ -1,0 +1,42 @@
+# Render configuration for the new Crew Clock web app. NOT ACTIVE.
+# Prepared 2026-10-10 for Chad's review; nothing has been created on Render.
+#
+# Kept apart from the Flask Crew Clock (service "crew-clock"): different
+# service name, different branch, manual deploys only, no shared settings.
+# This file is not at the repository root, so Render never picks it up by
+# itself. It is used only if Chad approves creating the service from it.
+#
+# Every value below is public. The web app has no server secrets: it signs
+# people in with Supabase's public key, and row security in the database
+# decides what each person may see.
+services:
+  - type: web
+    name: crew-clock-web                  # -> https://crew-clock-web.onrender.com until the new brand's domain exists
+    runtime: node
+    region: ohio                          # same region as the crew-clock-prod database (us-east-2)
+    plan: starter                         # 0.5 CPU, 512 MB, always on: $7/month
+    branch: web-release                   # only this branch deploys; never main (main runs the Flask app)
+    rootDir: platform
+    autoDeployTrigger: off                # a deploy happens only when someone presses Deploy
+    buildCommand: npm ci --no-audit --no-fund && npm run build -w @crew/web
+    startCommand: npm run start -w @crew/web   # next start listens on Render's $PORT
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: NEXT_PUBLIC_APP_ENV          # the app refuses to start unless the URL below is crew-clock-prod
+        value: production
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        value: https://kymnehbnmqvpzwtxtizm.supabase.co
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY   # Supabase "publishable" key: public by design
+        value: sb_publishable_dPalDCiHQ0C1TaUbmxeFEw_3yq5K7St
+      - key: NEXT_PUBLIC_SITE_URL         # links in invites/messages; change when the brand domain exists
+        value: https://crew-clock-web.onrender.com
+      - key: NEXT_PUBLIC_SUPPORT_EMAIL
+        value: chadwashamlawncare@gmail.com
+      # Deliberately NOT set:
+      #   NEXT_PUBLIC_LEGAL_APPROVED  - privacy/terms pages show "draft" until Chad approves the wording
+      #   NEXT_PUBLIC_LEGAL_OPERATOR  - defaults to "CWLC (Chad Washam Lawncare), Seymour, Tennessee"
+      #   ROUTING_PROVIDER            - defaults to the free built-in route estimate (no paid service)
