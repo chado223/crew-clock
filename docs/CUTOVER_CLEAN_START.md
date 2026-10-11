@@ -1,5 +1,7 @@
 # Cutover plan: clean start (chosen by Chad, 2026-10-10)
 
+**Clean-start verification: COMPLETE (2026-10-11).** Next: Chad's own testing (step 5), per `docs/TEST_PLAN.md`.
+
 **Status: prepared, not approved.** Nothing in this file has been run. Each numbered step needs Chad's go-ahead, and every production run also needs his click on GitHub (Environments → production).
 
 ## What "clean start" means
@@ -52,7 +54,7 @@ Verified read-only on 2026-10-10:
 | 1 ✅ | **Covered 2026-10-10/11** by the read-only preflight queries and run 11; nothing changed since except sign-up off. Preflight, read-only (`action=preflight`, clean mode): expect every safety check to pass. *one company* and *owner* show "not yet". | me + Chad's click | Read-only | n/a |
 | 2 ✅ | **Done 2026-10-11** (live check passed; sign-up off). Put the web app on the chosen host with `NEXT_PUBLIC_APP_ENV=production` and the production URL and public key. The app refuses to start if those don't match. Not announced or linked anywhere. | me (+ Chad for any account) | No | Take it down |
 | 3 ✅ | **Done 2026-10-11 05:43 UTC (approved):** company created, then renamed by Chad to **Chad Washam Lawncare**. His employee name is **Chad Washam**, and Chad added his phone and a $50/h pay rate. Owner: chadwasham64@gmail.com. Chad signs in with an emailed code and creates **Chad Washam Lawncare** in the app. He becomes owner automatically. Messages default to test mode, and the platform switch blocks live sending. | Chad | Creates 1 company | Delete it (no other data) |
-| 4 | Preflight again, clean mode: expect **all** checks to pass. That means 1 company, owner `chadwasham64@gmail.com`, nothing carried over, messaging off. | me + Chad's click | Read-only | n/a |
+| 4 ✅ | **Passed 2026-10-11, production run 12:** all 14 checks pass and `sign-ups open: false`. Four results were cut off by GitHub's 10-notice limit and confirmed read-only directly: owner, payments off, row security, photos private. Preflight again, clean mode: expect **all** checks to pass. That means 1 company, owner `chadwasham64@gmail.com`, nothing carried over, messaging off. | me + Chad's click | Read-only | n/a |
 | 5 | Chad's own end-to-end check: add a test employee, clock in/out, void it, and make a test invoice. Confirm it shows **test mode** and nothing is emailed to anyone. | Chad + me | Test rows (voidable, audited) | Void |
 | 6 | **Stop and report.** The new app runs for Chad only, and the crews are still on Flask + Sheet. | — | — | — |
 | 7 | *Later, separate approval:* invite crews (invite emails are crew communications), then run Flask and the new app side by side. | — | — | — |
