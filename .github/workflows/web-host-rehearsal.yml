@@ -50,7 +50,9 @@ jobs:
           PORT: "10000"
         run: |
           rm -rf apps/web/.next
-          npm run build -w @crew/web > /dev/null
+          if ! npm run build -w @crew/web > build2.log 2>&1; then
+            grep -iE "error|failed|warn" build2.log | head -20 | sed 's/^/::error title=placeholder-build::/'; tail -10 build2.log | sed 's/^/::error title=placeholder-build-tail::/'; exit 1
+          fi
           npm run start -w @crew/web > server.log 2>&1 &
           trap 'tail -15 server.log | sed "s/^/::error title=server-log::/"' ERR
           for i in $(seq 1 60); do curl -fs -o /dev/null localhost:10000/login && break; sleep 1; done
