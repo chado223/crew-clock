@@ -140,6 +140,19 @@ The Sheet is the **only** record of past hours: the old SQLite file is wiped whe
    - Rows that don't pair up cleanly get flagged for review, not guessed.
    - Totals must match the manifest week by week. One rule to settle at import: the Sheet files a shift under the week it *ended*, while the new app counts a shift in the week it *started*. That only differs for shifts crossing midnight on Sunday.
 
+### Status: done (2026-10-10)
+
+- **Old database:** read on 2026-10-07 (`rows.json`, `schema-live.json`). It was rebuilt into a throwaway database and every table and money total matched ("RESTORE VERIFIED").
+- **Sheet:** Chad made a private Drive copy, "Crew Clock time history — archive 2026-10-10". The .xlsx (sha256 `db21bbb6…d287b`) was fingerprinted read-only.
+  - Total recorded: 0.04 hours, which matches the Sheet's own Totals tabs.
+  - Clock-ins left open: chad ×2, clint and aiden fowler.
+  - The rest is test punches; there is no real payroll history.
+- **Off-site copy:** stored in private `chado223/crew-clock-backups`.
+  - All four files are age-encrypted to Chad's public key; the private key stays on his computer and a USB drive.
+  - A guard workflow rejects any unencrypted file or private key.
+- **Recovery test:** Chad downloaded the repo and ran `verify.ps1` on Windows. All four files unlocked and their fingerprints matched.
+- **Not built yet:** the recurring job in step 4. The old project is frozen, so the one-time copy covers it. A recurring off-site backup of the **new** project comes after cutover; until then, Supabase Pro daily backups cover it.
+
 ---
 
 ## Part 3 — Sign-in email (codes and invites)
