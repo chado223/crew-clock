@@ -1,6 +1,6 @@
-# Web app hosting: Render (approved by Chad, 2026-10-10). Prepared, not active.
+# Web app hosting: Render (approved by Chad, 2026-10-10). **Live since 2026-10-11 05:31 UTC.**
 
-Chad approved Render's $7/month always-on instance as the host. **Nothing has been created on Render yet.** Activating needs Chad's separate go-ahead, step by step below.
+Chad approved Render's $7/month always-on instance as the host. Service `crew-clock-web` (`srv-db5htolckfvc73a9e1gg`) was created with Chad's approval on 2026-10-11, after he added a card. The workspace stays on Hobby.
 
 The full configuration is in `platform/deploy/render-web.yaml`. It is outside the repository root, so Render never applies it by itself.
 
@@ -39,6 +39,27 @@ Deliberately left unset:
 
 No database password, service key or email key goes on this service.
 
+## Live deployment (2026-10-11)
+
+**Build and deploy:** first deploy `dep-db5htp5ckfvc73a9e2qg`, commit `24e6ff7` on `web-release`, manual trigger.
+- Build successful, live at 05:31:47 UTC; the app was ready about 1.5 s after starting.
+
+**Differences from `render-web.yaml`:**
+- The Render tool can't set a root folder, so the build and start commands begin with `cd platform`. Same result.
+- The health check path is unset until Chad adds `/login` in the dashboard.
+
+**Live check (`web-live-check.yml`, GitHub runner, GET requests only): passed.**
+- `/login`, `/privacy` and `/terms` load (200). A signed-out visit to `/clients` redirects to `/login` (307).
+- The page security policy allows only `https://kymnehbnmqvpzwtxtizm.supabase.co` (crew-clock-prod).
+- No reference to the staging or retired projects, and no secret keys in the page or its scripts.
+- Security headers are present: HSTS, frame-deny, nosniff, referrer policy.
+
+**Production afterwards:**
+- 1 user (Chad), 0 sessions, 0 pending codes, 0 companies, 0 messages.
+- Sign-up is still off.
+
+**Flask service `crew-clock`:** unchanged (same settings, last updated 2026-10-06).
+
 ## Cost
 
 | Item | Monthly |
@@ -64,8 +85,8 @@ No database password, service key or email key goes on this service.
    - Reopen it at cutover step 7 (inviting crews). **Verified 2026-10-11, production run 11 (passed):** `sign-ups open: false`; email sign-in on, auto-confirm off, phone and anonymous sign-in off.
    - The database showed still 1 user (Chad), 0 sessions, 0 pending codes, 0 sign-in events, 0 companies, 0 messages. No emails were sent, nothing was written, and nothing was deployed (Render still shows only the Flask service).
 3. ✅ **Done 2026-10-11:** branch `web-release` created from `production-ops`. App code is identical to rehearsed commit `df435da`; only docs differ. No service watches it yet.
-4. Create the Render service from `render-web.yaml`. Chad confirms the $7 charge in Render.
-5. First deploy (manual). Check `/login` loads and that the app is pointed at `crew-clock-prod`.
+4. ✅ **Done 2026-10-11:** Render service created. Chad added a card; the workspace stays on Hobby.
+5. ✅ **Done 2026-10-11:** first deploy is live and the read-only live check passed. Remaining: Chad sets Health Check Path = `/login` in Render.
 6. Continue the clean-start plan: Chad signs in and creates the company (`CUTOVER_CLEAN_START.md`, step 3).
 
 **Undo:** suspend or delete the Render service, which stops the $7 charge. The Flask app and the database are unaffected.
