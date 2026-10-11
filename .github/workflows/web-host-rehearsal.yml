@@ -52,12 +52,14 @@ jobs:
           rm -rf apps/web/.next
           npm run build -w @crew/web > /dev/null
           npm run start -w @crew/web > server.log 2>&1 &
+          trap 'tail -15 server.log | sed "s/^/::error title=server-log::/"' ERR
           for i in $(seq 1 60); do curl -fs -o /dev/null localhost:10000/login && break; sleep 1; done
           peak=0
           for round in $(seq 1 20); do
             for p in /login /privacy /terms / /clients; do curl -s -o /dev/null -w "%{http_code} " "localhost:10000$p" >> codes.txt; done
-            kb=$(ps -eo rss,args | grep -E "next-server|next start|node" | grep -v grep | awk '{s+=$1} END {print s}')
-            [ "$kb" -gt "$peak" ] && peak=$kb
+            kb=$(ps -eo rss,args | awk '/node|next/ && !/awk/ {s+=$1} END {print s+0}')
+            if [ "$kb" -gt "$peak" ]; then peak=$kb; fi
           done
+          ps -eo rss,args | awk '/node|next/ && !/awk/' | sed 's/^/::notice title=process::/' | cut -c1-200
           echo "::notice title=runtime::peak memory $(( peak / 1024 )) MB of 512 MB after 100 requests; status codes: $(sort codes.txt | tr ' ' '\n' | sort | uniq -c | tr '\n' ' ')"
           [ $(( peak / 1024 )) -lt 400 ] || echo "::warning title=runtime::above 400 MB - 512 MB instance would be tight"
