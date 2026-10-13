@@ -1,4 +1,4 @@
-# Staging (test) environment: prepared, not active (2026-10-11)
+# Staging (test) environment: LIVE since 2026-10-13
 
 **Read-only check 2026-10-13 (`staging-readonly-check.yml`): passed.** Details under "Staging state" below.
 
@@ -60,3 +60,19 @@ The check ran entirely in read-only transactions, using the staging secret behin
   - Production revoked these (migration `20261007001600` only acts when the production flag is on).
   - Row security means anonymous visitors still see nothing there, and the table is empty.
   - A small follow-up migration could revoke them everywhere, with approval.
+
+## Live (2026-10-13, approved by Chad)
+
+**Service:** `crew-clock-web-staging` (`srv-db70mg3ncjis73f4gcbg`), free plan, Ohio.
+- Branch `web-staging` (commit `1ced302`), auto-deploy off.
+- First deploy is live at **https://crew-clock-web-staging.onrender.com**.
+- The health check path is not set yet. It's optional on the free plan; Chad can add `/login` in the dashboard.
+
+**Live check (`web-live-check.yml`, target=staging, GET requests only): passed.**
+- `/login`, `/privacy` and `/terms` load (200). A signed-out visit to `/clients` redirects to `/login` (307).
+- The page security policy allows only `newivmnolbzhjypusmob` (staging).
+- No reference to production (`kymnehbnmqvpzwtxtizm`) or the retired project. No secret keys. Security headers present.
+
+**Staging sign-in settings:** sign-up open (intended for test accounts), email sign-in on, auto-confirm off, phone and anonymous off.
+
+**Unchanged:** production `crew-clock-web` (last updated 2026-10-11) and the Flask `crew-clock` (last updated 2026-10-06). Production's database was not touched.
