@@ -1,10 +1,14 @@
 name: Web live check (read-only)
 
 # Loads the public pages of the live web app and checks it is wired to
-# crew-clock-prod. Only GET requests to public pages: no sign-in, no emails,
+# the expected Supabase project. Only GET requests to public pages: no sign-in, no emails,
 # no data read or written.
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: "production or staging"
+        default: production
   push:
     branches: [production-ops]
     paths: [".github/workflows/web-live-check.yml"]
@@ -16,8 +20,10 @@ jobs:
   check:
     runs-on: ubuntu-latest
     env:
-      SITE: https://crew-clock-web.onrender.com
-      PROD: kymnehbnmqvpzwtxtizm
+      # PROD here means "the one project this site must use"; the others must not appear.
+      SITE: ${{ inputs.target == 'staging' && 'https://crew-clock-web-staging.onrender.com' || 'https://crew-clock-web.onrender.com' }}
+      PROD: ${{ inputs.target == 'staging' && 'newivmnolbzhjypusmob' || 'kymnehbnmqvpzwtxtizm' }}
+      OTHERS: ${{ inputs.target == 'staging' && 'kymnehbnmqvpzwtxtizm iwowjrnrbjiydckhjsfi' || 'newivmnolbzhjypusmob iwowjrnrbjiydckhjsfi' }}
     steps:
       - name: Pages load
         run: |
@@ -29,15 +35,15 @@ jobs:
           loc=$(curl -s -o /dev/null -w "%{http_code} %{redirect_url}" -m 30 "$SITE/clients")
           echo "::notice title=signed-out::/clients -> $loc (expect 307 to /login)"; case "$loc" in 307*"/login"*) ;; *) bad=1;; esac
           exit $bad
-      - name: Wired to crew-clock-prod (and nothing else)
+      - name: Wired to the expected database (and nothing else)
         run: |
           curl -s -D headers.txt -o login.html -m 30 "$SITE/login"
           csp=$(grep -i '^content-security-policy' headers.txt)
-          echo "$csp" | grep -q "https://$PROD.supabase.co" && echo "::notice title=database::page security policy allows only https://$PROD.supabase.co (crew-clock-prod)" || { echo "::error title=database::policy does not name crew-clock-prod"; exit 1; }
+          echo "$csp" | grep -q "https://$PROD.supabase.co" && echo "::notice title=database::page security policy allows only https://$PROD.supabase.co " || { echo "::error title=database::policy does not name the expected project"; exit 1; }
           for h in strict-transport-security x-frame-options x-content-type-options referrer-policy; do grep -qi "^$h" headers.txt && echo "::notice title=header::$h present" || echo "::warning title=header::$h missing"; done
           mkdir js; grep -o '/_next/static/[^"]*\.js' login.html | sort -u | while read f; do curl -s -m 30 "$SITE$f" -o "js/$(basename $f)"; done
           echo "::notice title=bundles::$(ls js | wc -l) scripts downloaded"
-          hits=$(grep -l "$PROD" js/* | wc -l); echo "::notice title=database::$hits script(s) name crew-clock-prod"
-          if grep -lq -e newivmnolbzhjypusmob -e iwowjrnrbjiydckhjsfi js/* login.html; then echo "::error title=database::staging or retired project referenced"; exit 1; fi
-          echo "::notice title=database::no reference to staging or the retired shared project"
+          hits=$(grep -l "$PROD" js/* | wc -l); echo "::notice title=database::$hits script(s) name the expected project"
+          for o in $OTHERS; do if grep -lq "$o" js/* login.html headers.txt; then echo "::error title=database::other project $o referenced"; exit 1; fi; done
+          echo "::notice title=database::site $SITE uses only $PROD; none of: $OTHERS"
           grep -qiE 'service_role|sb_secret_' js/* login.html && { echo "::error title=secrets::a secret-looking key is in the page"; exit 1; } || echo "::notice title=secrets::no secret keys in the page or scripts"

@@ -18,6 +18,12 @@ P0 = do now · P1 = Phase 1 blocker · P2 = Phase 2 · P3 = later. "Owner" is wh
 | P0-10 | Connect GitHub so work lands as PRs and CI runs | Chad | **Done** |
 | P0-11 | Link owner login to Chad Washam Lawncare in production | Chad confirms email, then approves | Waiting on Chad |
 
+## Open: fix before broader testing (tracked 2026-10-13, Chad)
+
+| ID | Issue | Status |
+|---|---|---|
+| T-1 | **Staging still grants anonymous visitors access to `scenarios`**, the other app's empty leftover table. Grants are INSERT, SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER. Row security blocks reads, and the table is empty. Production had them revoked by `20261007001600`, which only acts when the production flag is on. **Fix:** a new migration that revokes `scenarios` from `anon`/`authenticated` on every database. Apply to staging through the staging workflow; for production it's a no-op (already revoked), applied through the approved production run. Needs Chad's approval. | Open |
+
 ## P1: Foundation
 
 | ID | Issue | Status |
