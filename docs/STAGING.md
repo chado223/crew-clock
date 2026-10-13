@@ -76,3 +76,16 @@ The check ran entirely in read-only transactions, using the staging secret behin
 **Staging sign-in settings:** sign-up open (intended for test accounts), email sign-in on, auto-confirm off, phone and anonymous off.
 
 **Unchanged:** production `crew-clock-web` (last updated 2026-10-11) and the Flask `crew-clock` (last updated 2026-10-06). Production's database was not touched.
+
+## Sign-in on staging (2026-10-13)
+
+- **Templates:** the built-in email sender won't let us edit them (that needs custom SMTP), so staging emails a **link**, not a code.
+- **Settings Chad changed on staging:**
+  - Site URL = `https://crew-clock-web-staging.onrender.com`.
+  - Redirect URL allow-list = `https://crew-clock-web-staging.onrender.com/auth/callback**`.
+- **The link only works in the browser that requested it.**
+- **Built-in sender limits:** at most 2 emails per hour, and only to members of the Supabase organization (Chad).
+- **07:12 failure, "We couldn't send the code":** caused by that hourly limit.
+  - Staging had already sent 2 emails, at 06:53:38 (account created) and 06:59:05 (resent).
+  - Read-only check: 1 account, unconfirmed, 1 unused link from 06:59:05. Not a configuration or app error.
+- **Crew and customer logins:** they need a real sender (Resend free tier, existing account and domain); separate approval.
