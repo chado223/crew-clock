@@ -54,6 +54,15 @@
 
 ## Branch protection settings (set by Chad in GitHub; free)
 
+**Status, verified through the GitHub API on 2026-10-13:**
+- `platform-main` requires a pull request (0 approvals) and checks `apps` and `db-tests`; force pushes and deletion are blocked.
+- `web-release` and `web-staging` block force pushes and deletion.
+- `main` is locked, with admins included.
+- The `release/*` rule can only be confirmed once the first release branch exists.
+- **Two gaps:**
+  - "Do not allow bypassing the above settings" is off, so admins (Chad, and Claude's sessions using his access) can push straight past the rules.
+  - "Require branches to be up to date before merging" is off.
+
 GitHub doesn't let changes to these settings come from Claude's session, so they're set by hand: **Settings, Branches, Add classic branch protection rule**.
 
 | Branch | Settings |
