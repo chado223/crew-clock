@@ -1,5 +1,7 @@
 # Prioritized Issues
 
+> **Launch readiness is tracked in `docs/LAUNCH_READINESS.md` (official plan, adopted 2026-10-13).** This file tracks defects and small fixes; each open item names the plan ID it belongs to.
+
 P0 = do now · P1 = Phase 1 blocker · P2 = Phase 2 · P3 = later. "Owner" is who has to act.
 
 ## P0: Now
@@ -22,8 +24,8 @@ P0 = do now · P1 = Phase 1 blocker · P2 = Phase 2 · P3 = later. "Owner" is wh
 
 | ID | Issue | Status |
 |---|---|---|
-| T-2 | Sign-in error message is generic ("We couldn't send the code. Wait a minute and try again.") even when Supabase says the cause is the hourly email limit. Show "Too many sign-in emails, try again in an hour" for rate limits. It also says "code" where staging sends a link. Small app fix. | Open |
-| T-1 | **Staging still grants anonymous visitors access to `scenarios`**, the other app's empty leftover table. Grants are INSERT, SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER. Row security blocks reads, and the table is empty. Production had them revoked by `20261007001600`, which only acts when the production flag is on. **Fix:** a new migration that revokes `scenarios` from `anon`/`authenticated` on every database. Apply to staging through the staging workflow; for production it's a no-op (already revoked), applied through the approved production run. Needs Chad's approval. | Open |
+| T-2 (→ REL-7, PRD-2) | Sign-in error message is generic ("We couldn't send the code. Wait a minute and try again.") even when Supabase says the cause is the hourly email limit. Show "Too many sign-in emails, try again in an hour" for rate limits. It also says "code" where staging sends a link. Small app fix. | Open |
+| T-1 (→ REL-3, DEV-5) | **Staging still grants anonymous visitors access to `scenarios`**, the other app's empty leftover table. Grants are INSERT, SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER. Row security blocks reads, and the table is empty. Production had them revoked by `20261007001600`, which only acts when the production flag is on. **Fix:** a new migration that revokes `scenarios` from `anon`/`authenticated` on every database. Apply to staging through the staging workflow; for production it's a no-op (already revoked), applied through the approved production run. Needs Chad's approval. | Open |
 
 ## P1: Foundation
 
