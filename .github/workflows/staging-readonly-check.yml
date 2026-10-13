@@ -54,6 +54,13 @@ jobs:
           echo "::notice title=rows::non-empty tables: ${rows:-none}"
           echo "::notice title=messages::$(q "select count(*) || ' messages; live: ' || count(*) filter (where mode='live') from public.messages")"
           echo "::notice title=storage::$(q "select count(*) || ' stored files' from storage.objects")"
+      - name: Sign-in email activity (timestamps and counts only)
+        run: |
+          q() { psql "$DB_URL" -X -At -F '|' -c "begin transaction read only; $1; rollback;" | grep -v -e '^BEGIN$' -e '^ROLLBACK$' || true; }
+          echo "::notice title=now::$(q "select to_char(now() at time zone 'America/New_York', 'YYYY-MM-DD HH24:MI:SS') || ' Eastern'")"
+          echo "::notice title=accounts::$(q "select coalesce(string_agg('created ' || to_char(created_at at time zone 'America/New_York','HH24:MI:SS') || ', confirmed ' || coalesce(to_char(email_confirmed_at at time zone 'America/New_York','HH24:MI:SS'),'no') || ', confirmation email sent ' || coalesce(to_char(confirmation_sent_at at time zone 'America/New_York','HH24:MI:SS'),'never') || ', sign-in email sent ' || coalesce(to_char(recovery_sent_at at time zone 'America/New_York','HH24:MI:SS'),'never') || ', last sign-in ' || coalesce(to_char(last_sign_in_at at time zone 'America/New_York','HH24:MI:SS'),'never'), ' / '), 'none') from auth.users")"
+          echo "::notice title=pending-links::$(q "select count(*) || ' unused (' || coalesce(string_agg(token_type::text || ' made ' || to_char(created_at at time zone 'America/New_York','HH24:MI:SS'), ', '), 'none') || ')' from auth.one_time_tokens")"
+          echo "::notice title=auth-events::$(q "select coalesce(string_agg(to_char(created_at at time zone 'America/New_York','HH24:MI:SS') || ' ' || coalesce(payload->>'action','?'), ', ' order by created_at), 'none') from auth.audit_log_entries where created_at > now() - interval '6 hours'")"
       - name: Tenant isolation (read-only probes as real staging users)
         run: |
           q() { psql "$DB_URL" -X -At -F '|' -c "begin transaction read only; $1; rollback;" | grep -v -e '^BEGIN$' -e '^ROLLBACK$' || true; }
