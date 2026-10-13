@@ -31,7 +31,7 @@ jobs:
         run: bash .github/scripts/require-staging.sh
       - name: Database and migrations
         run: |
-          q() { psql "$DB_URL" -X -At -F '|' -c "begin transaction read only; $1; rollback;" | grep -v -e '^BEGIN$' -e '^ROLLBACK$'; }
+          q() { psql "$DB_URL" -X -At -F '|' -c "begin transaction read only; $1; rollback;" | grep -v -e '^BEGIN$' -e '^ROLLBACK$' || true; }
           echo "::notice title=read-only::session read-only = $(q "show transaction_read_only")"
           echo "::notice title=database::$(q "select split_part(version(), ' on ', 1)") | size $(q "select pg_size_pretty(pg_database_size(current_database()))")"
           q "select version, case when statements[1] like 'md5:%' then substring(statements[1] from 5) else 'no-fingerprint' end from supabase_migrations.schema_migrations order by 1" > db.txt
@@ -47,7 +47,7 @@ jobs:
           echo "::notice title=flags::$(q "select string_agg(key||'='||enabled, ', ' order by key) from private.platform_flags") (production must be false here)"
       - name: Existing test data
         run: |
-          q() { psql "$DB_URL" -X -At -F '|' -c "begin transaction read only; $1; rollback;" | grep -v -e '^BEGIN$' -e '^ROLLBACK$'; }
+          q() { psql "$DB_URL" -X -At -F '|' -c "begin transaction read only; $1; rollback;" | grep -v -e '^BEGIN$' -e '^ROLLBACK$' || true; }
           echo "::notice title=companies::$(q "select count(*) || ' — ' || coalesce(string_agg(name, '; ' order by created_at), 'none') from public.tenants")"
           echo "::notice title=sign-ins::$(q "select count(*) || ' accounts (' || count(*) filter (where email_confirmed_at is not null) || ' confirmed), last sign-in ' || coalesce(max(last_sign_in_at)::date::text, 'never') from auth.users"), sessions $(q "select count(*) from auth.sessions")"
           rows=$(q "select string_agg(t || '=' || n, ', ' order by t) from (select c.relname t, (xpath('/row/c/text()', query_to_xml(format('select count(*) c from public.%I', c.relname), false, true, '')))[1]::text::int n from pg_class c join pg_namespace s on s.oid=c.relnamespace where s.nspname='public' and c.relkind='r') x where n > 0")
@@ -56,7 +56,7 @@ jobs:
           echo "::notice title=storage::$(q "select count(*) || ' stored files' from storage.objects")"
       - name: Tenant isolation (read-only probes as real staging users)
         run: |
-          q() { psql "$DB_URL" -X -At -F '|' -c "begin transaction read only; $1; rollback;" | grep -v -e '^BEGIN$' -e '^ROLLBACK$'; }
+          q() { psql "$DB_URL" -X -At -F '|' -c "begin transaction read only; $1; rollback;" | grep -v -e '^BEGIN$' -e '^ROLLBACK$' || true; }
           echo "::notice title=posture::row security off on: $(q "select coalesce(string_agg(c.relname, ', '), 'none') from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r' and not c.relrowsecurity"); anon grants: $(q "select coalesce(string_agg(table_name || ':' || privilege_type, ', '), 'none') from information_schema.role_table_grants where grantee='anon' and table_schema='public'")"
           tables=$(q "select string_agg(c.relname, ' ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace join pg_attribute a on a.attrelid = c.oid and a.attname = 'tenant_id' and not a.attisdropped where n.nspname = 'public' and c.relkind = 'r' and has_table_privilege('authenticated', c.oid, 'select')")
           ntables=$(echo $tables | wc -w)
