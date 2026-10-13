@@ -47,3 +47,9 @@ jobs:
           for o in $OTHERS; do if grep -lq "$o" js/* login.html headers.txt; then echo "::error title=database::other project $o referenced"; exit 1; fi; done
           echo "::notice title=database::site $SITE uses only $PROD; none of: $OTHERS"
           grep -qiE 'service_role|sb_secret_' js/* login.html && { echo "::error title=secrets::a secret-looking key is in the page"; exit 1; } || echo "::notice title=secrets::no secret keys in the page or scripts"
+      - name: Sign-in settings (public endpoint, read-only)
+        env:
+          KEY: ${{ inputs.target == 'staging' && 'sb_publishable_Gr28VIRX0h4K2JthjxqIoQ_YWXENlLd' || 'sb_publishable_dPalDCiHQ0C1TaUbmxeFEw_3yq5K7St' }}
+        run: |
+          curl -fsS "https://$PROD.supabase.co/auth/v1/settings" -H "apikey: $KEY" > s.json
+          jq -r '"sign-ups open: \(.disable_signup|not); email sign-in: \(.external.email); auto-confirm: \(.mailer_autoconfirm); phone: \(.external.phone); anonymous: \(.external.anonymous_users // false)"' s.json | sed 's/^/::notice title=auth::/'
