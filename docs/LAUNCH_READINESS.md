@@ -100,10 +100,10 @@ Code paths are relative to `platform/` unless they start with `.github/` or `doc
 
 | ID | Requirement | Class | Status | Code location | Depends on | Flags | Definition of done |
 |---|---|---|---|---|---|---|---|
-| DEV-1 | Review and reconcile the 22 stacked pull requests | V1, Beta-blocker | Not started (PRs #1–#22 open; #1 draft) | GitHub | — | A | Every PR reviewed with a written summary. The production-equivalent tip (`production-ops`) lands on the new protected platform line through one reviewed baseline PR. The 22 PRs are closed as superseded with links, except #1's Flask hotfix, which waits for a separate approval. Nothing lost (diff check), and the production web build is unchanged. |
-| DEV-2 | Maintainable Git branching and release strategy | V1, Beta-blocker | Not started (section 6 is the proposal) | `docs/RELEASES.md` (new) | DEV-1 | A | The strategy in section 6 is written up, adopted, and used for 3 consecutive releases. |
+| DEV-1 | Review and reconcile the 22 stacked pull requests | V1, Beta-blocker | Partial (2026-10-13): `platform-main` created at `da1cb32`; containment verified, nothing lost (`docs/PR_RECONCILIATION.md`); PRs not yet closed; protection pending Chad's settings step | GitHub | — | A | Every PR reviewed with a written summary. The production-equivalent tip (`production-ops`) lands on the new protected platform line through one reviewed baseline PR. The 22 PRs are closed as superseded with links, except #1's Flask hotfix, which waits for a separate approval. Nothing lost (diff check), and the production web build is unchanged. |
+| DEV-2 | Maintainable Git branching and release strategy | V1, Beta-blocker | Partial (2026-10-13): written in `docs/RELEASES.md`; 0 of 3 releases done under it | `docs/RELEASES.md` | DEV-1 | A | The strategy in section 6 is written up, adopted, and used for 3 consecutive releases. |
 | DEV-3 | Protect the original Flask Crew Clock until a separately approved retirement | V1 | Done for now: `main` locked; Flask deploys only from `main`; Render ignores `platform/**` | Render `crew-clock`, `main` | — | A (for retirement) | Flask keeps serving with no unapproved change until its retirement item is approved. A test confirms platform releases never trigger a Flask deploy. |
-| DEV-4 | Enforce CI checks, staging validation, release approvals and rollback | V1, Beta-blocker | Partial: CI runs but isn't required; production database changes are approval-gated; web deploys are manual; rollback documented only in part | `.github/workflows/`, branch protection | DEV-2 | A | The platform line requires passing CI and Chad's approval. Every release goes to staging first with a signed-off checklist. Production deploys need approval. Rollback rehearsed for the web app (redeploy previous tag), the mobile app (previous build or update) and the database (forward fix or restore). |
+| DEV-4 | Enforce CI checks, staging validation, release approvals and rollback | V1, Beta-blocker | Partial: `apps` and `db-tests` now run on every pull request (2026-10-13); not yet required until protection is set; production database changes are approval-gated; web deploys are manual; rollback documented only in part | `.github/workflows/`, branch protection | DEV-2 | A | The platform line requires passing CI and Chad's approval. Every release goes to staging first with a signed-off checklist. Production deploys need approval. Rollback rehearsed for the web app (redeploy previous tag), the mobile app (previous build or update) and the database (forward fix or restore). |
 | DEV-5 | Separate production and staging environments | V1 | Verified (staging) on 2026-10-13: separate projects, services and branches; guards tested | `platform/deploy/*.yaml`, `packages/shared/src/projects.ts` | — | — | Already true; kept true. Staging must also keep its own email sender (DEV-10) and stay awake during test cycles. |
 | DEV-9 *(added)* | Upgrade Expo / React Native to a supported release | V1, Beta-blocker | Not started (SDK 54) | `apps/mobile/` | — | — | On a current SDK; typecheck, build and device test pass; REL-8 findings cleared. |
 | DEV-10 *(added)* | Email deliverability setup | V1, Beta-blocker | Partial: Resend domain verified (DKIM); DMARC unknown; staging has no sender | DNS at GoDaddy; Resend | PRD-3 | ACCT/$ maybe | SPF, DKIM and DMARC pass for the final sending domain. Bounce and complaint webhooks are handled. A seed test lands in the inbox, not spam, at Gmail, Outlook and Yahoo. Staging has its own sender. |
@@ -204,7 +204,7 @@ These are marked *(added)* above.
 
 1. **Freeze Flask where it is.**
    - `main` stays the Flask app, locked, with Render auto-deploying it as today.
-   - Tag its current state `flask-live-e9144e7`.
+   - Its current commit is `e9144e7`.
    - Nothing platform-related is merged into `main`. Render ignores only `platform/**`, so merging docs or workflows into `main` would redeploy Flask.
    - At retirement, a separate approval decides whether `main` becomes the platform line.
 2. **Create a protected platform line, `platform-main`.**
@@ -213,19 +213,19 @@ These are marked *(added)* above.
    - No direct pushes; linear history.
    - The 22 stacked PRs are then closed as superseded, with links. PR #1's Flask hotfix stays open for its own decision.
 3. **Work happens on feature branches** named `feat/<ID>-short-name` (IDs from this plan), then a PR into `platform-main`, then CI, then review.
-4. **Releases are tags** on `platform-main` (`v2026.11.0`, `v2026.11.1` …) with release notes listing plan IDs and test evidence.
+4. **Releases are protected `release/vYYYY.MM.N` branches** cut from `platform-main` (git tags can't be pushed from Claude's session), with release notes listing plan IDs and test evidence.
 5. **Staging first.**
    - `web-staging` is moved to the release tag, staging is deployed manually, and database migrations go through the staging workflow.
    - The staging checklist is run and signed off.
 6. **Production by approval.**
-   - Chad approves; `web-release` moves to the same tag; the production deploy is manual.
+   - Chad approves; `web-release` moves to the same release commit; the production deploy is manual.
    - Database migrations go through the gated production workflow (`production-ops` stays only for those approval requests).
    - Migrations follow expand-then-contract, so the previous app version keeps working and the app can be rolled back.
 7. **Rollback.**
-   - **Web:** redeploy the previous tag (Render keeps previous deploys).
+   - **Web:** Render's Rollback to the previous deploy.
    - **Database:** forward-fix migration; restore from backup only as a last resort, per the DR runbook.
    - **Mobile:** stop the staged rollout, or ship an over-the-air fix to the right channel with approval.
-8. **Hotfixes.** Branch from the live tag, open a PR into `platform-main`, tag a patch, then staging, then production.
+8. **Hotfixes.** Branch from the live release, open a PR into `platform-main`, cut a patch release, then staging, then production.
 9. **Mobile channels.** EAS "staging" builds point only at staging and "production" builds only at production (the guard is already in the app). Store releases use staged rollouts.
 
 ---
@@ -247,8 +247,8 @@ These are marked *(added)* above.
 | Done | 0 |
 | Verified (staging) | 1 (DEV-5) |
 | Built | 4 (MOB-6, BIZ-3, BIZ-5, BIZ-6) |
-| Partial | 16 |
-| Not started | 26 |
+| Partial | 17 |
+| Not started | 25 |
 | Unknown | 1 (PRD-0) |
 | Holding as intended | 1 (DEV-3, Flask protected) |
 | **Total V1 items** | **49** (32 from Chad's list of 2026-10-13, 17 added) |
@@ -259,4 +259,5 @@ Progress reports list each item whose status changed, with its evidence.
 
 | Date | Change |
 |---|---|
+| 2026-10-13 | Task 1 started: `platform-main` created; PR stack reconciled (nothing lost); release process documented in `docs/RELEASES.md`; DEV-1, DEV-2, DEV-4 updated. |
 | 2026-10-13 | Plan adopted from Chad's requirements of 2026-10-13, plus additions; all statuses set from the read-only review of the same day. |

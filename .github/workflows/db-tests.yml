@@ -3,8 +3,7 @@ name: Database tests (tenant isolation = release blocker)
 on:
   push:
     paths: ["platform/supabase/**", ".github/workflows/db-tests.yml"]
-  pull_request:
-    paths: ["platform/supabase/**", ".github/workflows/db-tests.yml"]
+  pull_request:   # every PR, no path filter: these are required checks on platform-main
 
 jobs:
   db-tests:
