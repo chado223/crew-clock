@@ -1,5 +1,7 @@
 # Staging (test) environment: prepared, not active (2026-10-11)
 
+**Read-only check 2026-10-13 (`staging-readonly-check.yml`): passed.** Details under "Staging state" below.
+
 Chad chose to test with made-up data in a separate copy (Option A in `TEST_PLAN.md`), so the production company stays clean.
 
 ## Pieces
@@ -40,3 +42,21 @@ Later, only when needed (rounds 5–7): an email sender for staging, a phone tes
 ## Keeping staging alive
 
 Free projects pause after a week idle. Waking one is a free click and nothing is lost. Projects paused for more than 90 days can't be restored with a click. Testing every few days keeps it awake.
+
+## Staging state (read-only check, 2026-10-13)
+
+Chad confirmed the project is **Active**, so no restore was needed.
+
+The check ran entirely in read-only transactions, using the staging secret behind the staging-only guard:
+- **Database:** PostgreSQL 17.11, 18 MB.
+- **Migrations:** all 36 repo migrations are present with matching fingerprints, newest `20261007001600`, the same as production.
+  - There is one extra history row, `20261005215701`: the original baseline, applied early through Supabase's tool and recorded again under the repo's version. Cosmetic only.
+- **Flags:** `production=false`, `live_messaging=false`, `online_payments=false`.
+- **Data:** empty. 0 companies, 0 accounts, 0 rows in every table, 0 messages, 0 stored files.
+- **Isolation posture:** row security is on for every table, and 41 company tables were found.
+  - A live probe as real accounts wasn't possible (there are no accounts yet). It will be once test accounts exist.
+  - The full isolation suite passes in CI on every database change. Its last run against staging (2026-10-07, every test rolled back) also passed.
+- **One difference from production:** anonymous visitors still have grants on `scenarios`, the other app's empty leftover table.
+  - Production revoked these (migration `20261007001600` only acts when the production flag is on).
+  - Row security means anonymous visitors still see nothing there, and the table is empty.
+  - A small follow-up migration could revoke them everywhere, with approval.
