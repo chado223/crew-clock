@@ -100,10 +100,10 @@ Code paths are relative to `platform/` unless they start with `.github/` or `doc
 
 | ID | Requirement | Class | Status | Code location | Depends on | Flags | Definition of done |
 |---|---|---|---|---|---|---|---|
-| DEV-1 | Review and reconcile the 22 stacked pull requests | V1, Beta-blocker | Partial (2026-10-13): `platform-main` created at `da1cb32`; containment verified, nothing lost (`docs/PR_RECONCILIATION.md`); PRs not yet closed; protection pending Chad's settings step | GitHub | — | A | Every PR reviewed with a written summary. The production-equivalent tip (`production-ops`) lands on the new protected platform line through one reviewed baseline PR. The 22 PRs are closed as superseded with links, except #1's Flask hotfix, which waits for a separate approval. Nothing lost (diff check), and the production web build is unchanged. |
+| DEV-1 | Review and reconcile the 22 stacked pull requests | V1, Beta-blocker | **Done (2026-10-13).** Evidence: `docs/PR_RECONCILIATION.md` (all 22 heads contained, nothing lost); PRs #2–#22 closed as superseded; #1 kept open for its Flask decision; `platform-main` protected; reconciliation merged as PR #23 (`7d39bf9`) with `apps` and `db-tests` green; `main`, `web-release` and `web-staging` unchanged | GitHub | — | A | Every PR reviewed with a written summary. The production-equivalent tip (`production-ops`) lands on the new protected platform line through one reviewed baseline PR. The 22 PRs are closed as superseded with links, except #1's Flask hotfix, which waits for a separate approval. Nothing lost (diff check), and the production web build is unchanged. |
 | DEV-2 | Maintainable Git branching and release strategy | V1, Beta-blocker | Partial (2026-10-13): written in `docs/RELEASES.md`; 0 of 3 releases done under it | `docs/RELEASES.md` | DEV-1 | A | The strategy in section 6 is written up, adopted, and used for 3 consecutive releases. |
 | DEV-3 | Protect the original Flask Crew Clock until a separately approved retirement | V1 | Done for now: `main` locked; Flask deploys only from `main`; Render ignores `platform/**` | Render `crew-clock`, `main` | — | A (for retirement) | Flask keeps serving with no unapproved change until its retirement item is approved. A test confirms platform releases never trigger a Flask deploy. |
-| DEV-4 | Enforce CI checks, staging validation, release approvals and rollback | V1, Beta-blocker | Partial: `apps` and `db-tests` now run on every pull request (2026-10-13); not yet required until protection is set; production database changes are approval-gated; web deploys are manual; rollback documented only in part | `.github/workflows/`, branch protection | DEV-2 | A | The platform line requires passing CI and Chad's approval. Every release goes to staging first with a signed-off checklist. Production deploys need approval. Rollback rehearsed for the web app (Render rollback to the previous deploy), the mobile app (previous build or update) and the database (forward fix or restore). |
+| DEV-4 | Enforce CI checks, staging validation, release approvals and rollback | V1, Beta-blocker | Partial (2026-10-13): `platform-main` requires a PR plus `apps` and `db-tests`; force-push and delete blocked on `platform-main`, `web-release`, `web-staging`. **Gaps:** repository admins (including Claude's sessions, which use Chad's GitHub access) can bypass the rules; "require branches up to date" is off; staging sign-off and rollback not yet rehearsed | `.github/workflows/`, branch protection | DEV-2 | A | The platform line requires passing CI and Chad's approval. Every release goes to staging first with a signed-off checklist. Production deploys need approval. Rollback rehearsed for the web app (Render rollback to the previous deploy), the mobile app (previous build or update) and the database (forward fix or restore). |
 | DEV-5 | Separate production and staging environments | V1 | Verified (staging) on 2026-10-13: separate projects, services and branches; guards tested | `platform/deploy/*.yaml`, `packages/shared/src/projects.ts` | — | — | Already true; kept true. Staging must also keep its own email sender (DEV-10) and stay awake during test cycles. |
 | DEV-9 *(added)* | Upgrade Expo / React Native to a supported release | V1, Beta-blocker | Not started (SDK 54) | `apps/mobile/` | — | — | On a current SDK; typecheck, build and device test pass; REL-8 findings cleared. |
 | DEV-10 *(added)* | Email deliverability setup | V1, Beta-blocker | Partial: Resend domain verified (DKIM); DMARC unknown; staging has no sender | DNS at GoDaddy; Resend | PRD-3 | ACCT/$ maybe | SPF, DKIM and DMARC pass for the final sending domain. Bounce and complaint webhooks are handled. A seed test lands in the inbox, not spam, at Gmail, Outlook and Yahoo. Staging has its own sender. |
@@ -244,10 +244,10 @@ These are marked *(added)* above.
 
 | Status | Count of V1 items |
 |---|---|
-| Done | 0 |
+| Done | 1 (DEV-1) |
 | Verified (staging) | 1 (DEV-5) |
 | Built | 4 (MOB-6, BIZ-3, BIZ-5, BIZ-6) |
-| Partial | 17 |
+| Partial | 16 |
 | Not started | 25 |
 | Unknown | 1 (PRD-0) |
 | Holding as intended | 1 (DEV-3, Flask protected) |
@@ -259,5 +259,6 @@ Progress reports list each item whose status changed, with its evidence.
 
 | Date | Change |
 |---|---|
+| 2026-10-13 | Task 1 complete: branch protection set by Chad and verified; PR #23 merged into `platform-main` through the protected path; DEV-1 Done; DEV-4 gaps recorded (admin bypass, up-to-date check off). |
 | 2026-10-13 | Task 1 started: `platform-main` created; PR stack reconciled (nothing lost); release process documented in `docs/RELEASES.md`; DEV-1, DEV-2, DEV-4 updated. |
 | 2026-10-13 | Plan adopted from Chad's requirements of 2026-10-13, plus additions; all statuses set from the read-only review of the same day. |
