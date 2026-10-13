@@ -32,6 +32,11 @@ jobs:
             code=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "$SITE$p")
             echo "::notice title=page::$p -> $code"; [ "$code" = 200 ] || bad=1
           done
+          # T-3 regression: an emailed-link callback without a valid code must send people to the
+          # PUBLIC site's login page (never the proxy's internal https://localhost:10000).
+          cb=$(curl -s -o /dev/null -w "%{http_code} %{redirect_url}" -m 30 "$SITE/auth/callback?next=%2Fclients")
+          echo "::notice title=sign-in link::/auth/callback (no code) -> $cb"
+          case "$cb" in 307*"$SITE/login?error=link&next=%2Fclients") ;; *) echo "::error title=sign-in link::expected a redirect to $SITE/login?error=link…"; bad=1;; esac
           loc=$(curl -s -o /dev/null -w "%{http_code} %{redirect_url}" -m 30 "$SITE/clients")
           echo "::notice title=signed-out::/clients -> $loc (expect 307 to /login)"; case "$loc" in 307*"/login"*) ;; *) bad=1;; esac
           exit $bad

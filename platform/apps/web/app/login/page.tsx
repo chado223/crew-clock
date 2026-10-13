@@ -82,7 +82,7 @@ export default async function LoginPage({
               </div>
               {error === "email" && <p className="error-text">Enter a valid email address.</p>}
               {error === "send" && <p className="error-text">We couldn't send the code. Wait a minute and try again.</p>}
-              {error === "link" && <p className="error-text">That sign-in link has expired. Send a new one.</p>}
+              {error === "link" && <p className="error-text">That sign-in link has expired or was already used. Links work once; send a new one.</p>}
               <button className="button" type="submit">
                 Email me a code
               </button>

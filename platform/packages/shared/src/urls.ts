@@ -17,3 +17,28 @@ export function safeNext(next: string | null | undefined, fallback = "/"): strin
     return fallback;
   }
 }
+
+/**
+ * Absolute public URL for a same-site redirect. Behind a proxy (Render), the
+ * request's own address is the internal one (https://localhost:10000), so
+ * redirects must be built from the configured public site URL
+ * (NEXT_PUBLIC_SITE_URL). The request origin is only accepted as a fallback
+ * when the caller passes it (development). The path always goes through
+ * safeNext, so it can never point at another site.
+ */
+export function publicUrl(path: string | null | undefined, siteUrl: string | null | undefined, fallbackOrigin?: string): string {
+  const base = originOf(siteUrl) ?? originOf(fallbackOrigin);
+  if (!base) throw new Error("NEXT_PUBLIC_SITE_URL must be set to the public https address");
+  return base + safeNext(path);
+}
+
+function originOf(url: string | null | undefined): string | null {
+  if (!url || typeof url !== "string") return null;
+  try {
+    const u = new URL(url.trim(), "http://same.invalid");
+    if (u.origin === "http://same.invalid" || !/^https?:\/\//.test(url.trim())) return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
